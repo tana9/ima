@@ -38,12 +38,33 @@ function getImaFolder_() {
   return cachedFolder_;
 }
 
-function doGet() {
-  return HtmlService.createTemplateFromFile('Index')
-    .evaluate()
+function doGet(e) {
+  if (e && e.parameter && e.parameter.manifest) {
+    return buildManifestResponse_();
+  }
+
+  var template = HtmlService.createTemplateFromFile('Index');
+  template.manifestUrl = ScriptApp.getService().getUrl() + '?manifest=1';
+  return template.evaluate()
     .setTitle('今なにしてる')
     .addMetaTag('viewport', 'width=device-width, initial-scale=1')
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
+}
+
+// Android などでホーム画面に追加した際のアプリらしい見た目のための Web App Manifest。
+// Service Worker がないため正式な「インストール」条件は満たさないが、
+// 対応するブラウザではホーム画面追加後の表示に反映される場合がある。
+function buildManifestResponse_() {
+  var manifest = {
+    name: '今なにしてる',
+    short_name: 'ima',
+    start_url: ScriptApp.getService().getUrl(),
+    display: 'standalone',
+    background_color: '#f5f5f7',
+    theme_color: '#007aff'
+  };
+  return ContentService.createTextOutput(JSON.stringify(manifest))
+    .setMimeType(ContentService.MimeType.JSON);
 }
 
 function getCurrentStatus() {

@@ -76,8 +76,44 @@ test('終了欄の現在時刻ボタンは日時入力と同じ高さで横並�
   expect(boxes[0].height).toBe(boxes[1].height);
   expect(boxes[1].height).toBeGreaterThanOrEqual(44);
   expect(boxes[0].y).toBe(boxes[1].y);
-  expect(boxes[2].y).toBe(boxes[0].y);
+  if (await page.evaluate(() => window.innerWidth < 720)) {
+    expect(boxes[2].y).toBeGreaterThan(boxes[0].y);
+  }
+  expect(await finishButton.evaluate(button => button.scrollWidth <= button.clientWidth)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('スマートフォンでは終了欄が追従し、日付操作を1行で使える', async ({ page }) => {
+  await page.goto('/');
+  const layout = await page.evaluate(() => {
+    const finish = document.getElementById('finishCard');
+    const navigation = document.querySelector('.day-navigation');
+    const date = document.getElementById('recordDateInput');
+    const style = getComputedStyle(finish);
+    const navStyle = getComputedStyle(navigation);
+    return { position: style.position, columns: navStyle.gridTemplateColumns,
+      dateTop: date.getBoundingClientRect().top, navTop: navigation.getBoundingClientRect().top };
+  });
+  if (await page.evaluate(() => window.innerWidth < 720)) {
+    expect(layout.position).toBe('sticky');
+    expect(layout.columns).not.toBe('none');
+    expect(layout.dateTop).toBe(layout.navTop);
+  }
+});
+
+test('編集フォームの場所・説明・画像を詳細欄にまとめる', async ({ page }) => {
+  await page.goto('/?scenario=empty');
+  await page.getByLabel('今やっていること').fill('詳細欄の確認');
+  await page.getByRole('button', { name: '開始する', exact: true }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await page.locator('.today-item').click();
+  const details = page.locator('.edit-details');
+  await expect(details).toHaveCount(1);
+  await expect(details.locator('summary')).toHaveText('場所・説明・画像');
+  await expect(details).not.toHaveAttribute('open', '');
+  await details.locator('summary').click();
+  await expect(details).toHaveAttribute('open', '');
+  await expect(details.getByLabel('場所(任意)', { exact: true })).toBeVisible();
 });
 
 test('記録をキーボードで編集でき、確認画面のフォーカスを保持して元に戻す', async ({ page }) => {

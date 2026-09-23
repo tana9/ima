@@ -98,9 +98,8 @@
       <button type="button" class="btn-secondary" onclick="moveRecordDate(-1)">前日</button>
       <button type="button" class="btn-secondary" onclick="selectRecordDate(null)">今日</button>
       <button type="button" class="btn-secondary" onclick="moveRecordDate(1)">翌日</button>
+      <input type="date" id="recordDateInput" aria-label="記録の日付（日本時間）" onchange="selectRecordDate(this.value)">
     </div>
-    <label class="field-label" for="recordDateInput">記録の日付（日本時間）</label>
-    <input type="date" id="recordDateInput" onchange="selectRecordDate(this.value)">
     <div id="recordResults">
       <div id="daySummary" class="day-summary" aria-label="作業時間の集計"></div>
       <p class="empty-hint">選択日内の時間を集計します。進行中は現在まで、重複する記録はそれぞれ加算します。1分未満の端数は切り捨て表示します。</p>

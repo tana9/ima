@@ -131,6 +131,7 @@
     wrap.innerHTML =
       '<label class="field-label">内容</label>' +
       '<input type="text" class="edit-title">' +
+      '<details class="edit-details"><summary>場所・説明・画像</summary>' +
       '<label class="field-label">場所(任意)</label>' +
       '<input type="text" class="edit-location">' +
       '<label class="field-label">説明(任意)</label>' +
@@ -139,7 +140,7 @@
       '<input type="file" class="edit-image" accept="image/png,image/jpeg,image/gif,image/webp">' +
       '<div class="empty-hint edit-image-name"></div>' +
       '<button type="button" class="btn-secondary edit-clear-image">添付画像の選択を解除</button>' +
-      '<div class="empty-hint" style="margin-bottom:12px;">添付するとリンクを知っている人は誰でも閲覧できる状態でDriveに保存されます</div>' +
+      '<div class="empty-hint" style="margin-bottom:12px;">添付するとリンクを知っている人は誰でも閲覧できる状態でDriveに保存されます</div></details>' +
       '<label class="field-label">開始</label>' +
       '<input type="datetime-local" class="edit-start">' +
       (ev.active
@@ -182,6 +183,7 @@
       wrap.querySelector('.edit-image-name').textContent = '';
       persistDrafts();
     });
+    wrap.querySelector('.edit-details').open = !!(draft.location || draft.description || draft.file || draft.imageName);
     ['title', 'location', 'description', 'start', 'end'].forEach(function(field) {
       var input = wrap.querySelector('.edit-' + field);
       if (input) input.addEventListener('input', function() { draft[field] = input.value; draft.dirty = true; persistDrafts(); });

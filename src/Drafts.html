@@ -1,9 +1,13 @@
 <script>
 // 同じタブの再読み込みに備える。画像本体は保存せず、再選択を案内する。
+// 開始フォームの下書き対象フィールドはここに一本化し、復元・保存・入力監視で使い回す。
+var DRAFT_ACTIVITY_FIELDS = ['title', 'location', 'description'];
+var DRAFT_EDIT_FIELDS = DRAFT_ACTIVITY_FIELDS.concat(['start', 'end', 'imageName']);
 var draftsReady = false;
 var restoredImageName = '';
 var restoredFinishDraft = null;
 var draftStorageKey = 'ima-draft-v1';
+var previewImageUrl = null;
 
 function draftText(value) { return typeof value === 'string' ? value : ''; }
 
@@ -20,7 +24,7 @@ function initDrafts() {
         appState.selectedDate = saved.selectedDate;
       }
       var activity = saved.activity || {};
-      ['title', 'location', 'description'].forEach(function(field) {
+      DRAFT_ACTIVITY_FIELDS.forEach(function(field) {
         document.getElementById(field + 'Input').value = draftText(activity[field]);
       });
       restoredImageName = draftText(activity.imageName);
@@ -28,7 +32,7 @@ function initDrafts() {
       var edit = saved.edit;
       if (edit && typeof edit.id === 'string') {
         var draft = { id: edit.id, file: null, dirty: true };
-        ['title', 'location', 'description', 'start', 'end', 'imageName'].forEach(function(field) { draft[field] = draftText(edit[field]); });
+        DRAFT_EDIT_FIELDS.forEach(function(field) { draft[field] = draftText(edit[field]); });
         appState.editingEventId = draft.id;
         appState.editDraft = draft;
       }
@@ -42,22 +46,34 @@ function initDrafts() {
     showMessage('下書きを復元できませんでした。入力して続けられます。');
   }
   draftsReady = true;
-  ['titleInput', 'locationInput', 'descriptionInput', 'finishTimeInput'].forEach(function(id) {
+  DRAFT_ACTIVITY_FIELDS.map(function(field) { return field + 'Input'; }).concat(['finishTimeInput']).forEach(function(id) {
     document.getElementById(id).addEventListener('input', persistDrafts);
   });
   document.getElementById('imageInput').addEventListener('change', function() {
     restoredImageName = '';
+    updateImagePreview(document.getElementById('imageInput').files[0] || null);
     persistDrafts();
   });
   updateDraftUi();
 }
 
 function hasActivityDraftContent() {
-  return !!(document.getElementById('titleInput').value ||
-    document.getElementById('locationInput').value ||
-    document.getElementById('descriptionInput').value ||
-    document.getElementById('imageInput').files[0] ||
-    restoredImageName);
+  return DRAFT_ACTIVITY_FIELDS.some(function(field) { return document.getElementById(field + 'Input').value; }) ||
+    !!document.getElementById('imageInput').files[0] || !!restoredImageName;
+}
+
+// 選択済みの画像ファイルをサムネイルとして表示する。復元直後の画像名だけの状態では本体がないため表示しない。
+function updateImagePreview(file) {
+  var img = document.getElementById('imagePreview');
+  if (previewImageUrl && typeof URL !== 'undefined') URL.revokeObjectURL(previewImageUrl);
+  previewImageUrl = null;
+  if (file && typeof URL !== 'undefined') {
+    previewImageUrl = URL.createObjectURL(file);
+    img.src = previewImageUrl;
+    img.hidden = false;
+  } else {
+    img.hidden = true;
+  }
 }
 
 // 下書きの有無に応じて、破棄ボタンや説明文の表示・非表示を切り替える。
@@ -76,6 +92,7 @@ function updateDraftUi() {
 function clearSelectedImage() {
   document.getElementById('imageInput').value = '';
   restoredImageName = '';
+  updateImagePreview(null);
   persistDrafts();
 }
 
@@ -91,15 +108,16 @@ function persistDrafts() {
   if (!draftsReady) return;
   var edit = appState.editDraft;
   var file = document.getElementById('imageInput').files[0];
+  var activity = { imageName: file ? file.name : restoredImageName };
+  DRAFT_ACTIVITY_FIELDS.forEach(function(field) { activity[field] = document.getElementById(field + 'Input').value; });
   var saved = { version: 1, selectedDate: appState.selectedDate,
-    activity: { title: document.getElementById('titleInput').value,
-      location: document.getElementById('locationInput').value,
-      description: document.getElementById('descriptionInput').value,
-      imageName: file ? file.name : restoredImageName },
+    activity: activity,
     finish: restoredFinishDraft || { eventId: appState.status && appState.status.eventId,
       value: document.getElementById('finishTimeInput').value },
-    edit: edit ? { id: edit.id, title: edit.title, location: edit.location, description: edit.description,
-      start: edit.start, end: edit.end, imageName: edit.file ? edit.file.name : edit.imageName || '' } : null };
+    edit: edit ? DRAFT_EDIT_FIELDS.reduce(function(obj, field) {
+      obj[field] = field === 'imageName' ? (edit.file ? edit.file.name : edit.imageName || '') : edit[field];
+      return obj;
+    }, { id: edit.id }) : null };
   try { sessionStorage.setItem(draftStorageKey, JSON.stringify(saved)); }
   catch (_) { showMessage('このブラウザでは下書きを保存できません。再読み込みすると入力が消えます。', true); }
   updateDraftUi();
@@ -108,7 +126,7 @@ function persistDrafts() {
 async function discardDrafts() {
   return runAction(async function() {
     if (!(await showConfirm('入力中の下書きを破棄しますか? 保存済みの記録は変更されません。'))) return;
-    ['titleInput', 'locationInput', 'descriptionInput', 'finishTimeInput'].forEach(function(id) { document.getElementById(id).value = ''; });
+    DRAFT_ACTIVITY_FIELDS.map(function(field) { return field + 'Input'; }).concat(['finishTimeInput']).forEach(function(id) { document.getElementById(id).value = ''; });
     appState.editingEventId = null;
     appState.editDraft = null;
     restoredFinishDraft = null;

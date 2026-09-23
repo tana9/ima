@@ -86,10 +86,18 @@
   function renderSummary() {
     if (!appState.day) return;
     var summary = DateTime.summarize(appState.events, appState.day, Date.now());
-    document.getElementById('daySummary').innerHTML = '<strong>合計 ' + DateTime.formatDuration(summary.total) + '</strong>' +
-      '<ul>' + summary.items.map(function(item) {
-        return '<li>' + escapeHtml(item.title) + '：' + DateTime.formatDuration(item.millis) + '</li>';
-      }).join('') + '</ul>';
+    var container = document.getElementById('daySummary');
+    container.innerHTML = '';
+    var strong = document.createElement('strong');
+    strong.textContent = '合計 ' + DateTime.formatDuration(summary.total);
+    var ul = document.createElement('ul');
+    summary.items.forEach(function(item) {
+      var li = document.createElement('li');
+      li.textContent = item.title + '：' + DateTime.formatDuration(item.millis);
+      ul.appendChild(li);
+    });
+    container.appendChild(strong);
+    container.appendChild(ul);
   }
 
   function showDuplicateHint(show) {
@@ -116,11 +124,21 @@
         (!ev.active && DateTime.formatLocal(ev.end).slice(0, 10) !== selectedDate);
       function timeLabel(value) { return showDate ? DateTime.formatLocal(value).replace('T', ' ') : DateTime.formatTime(value); }
       var timeRange = timeLabel(ev.start) + '〜' + (ev.active ? '進行中' : (showDate ? '\n' : '') + timeLabel(ev.end));
-      var titleHtml = escapeHtml(ev.title) +
-        (ev.location ? '<br><span class="today-location">@ ' + escapeHtml(ev.location) + '</span>' : '');
-      row.innerHTML =
-        '<span class="today-time">' + timeRange + '</span>' +
-        '<span class="today-title">' + titleHtml + '</span>';
+      var timeSpan = document.createElement('span');
+      timeSpan.className = 'today-time';
+      timeSpan.textContent = timeRange;
+      var titleSpan = document.createElement('span');
+      titleSpan.className = 'today-title';
+      titleSpan.textContent = ev.title;
+      if (ev.location) {
+        titleSpan.appendChild(document.createElement('br'));
+        var locationSpan = document.createElement('span');
+        locationSpan.className = 'today-location';
+        locationSpan.textContent = '@ ' + ev.location;
+        titleSpan.appendChild(locationSpan);
+      }
+      row.appendChild(timeSpan);
+      row.appendChild(titleSpan);
       row.addEventListener('click', function() { toggleEdit(ev.id); });
       el.appendChild(row);
 
@@ -138,13 +156,8 @@
     persistDrafts();
   }
 
-  function buildEditForm(ev) {
-    var wrap = document.createElement('div');
-    wrap.className = 'today-edit';
-    wrap.addEventListener('click', function(e) { e.stopPropagation(); });
-
-    wrap.innerHTML =
-      '<label class="field-label">内容</label>' +
+  function editFormMarkup(ev) {
+    return '<label class="field-label">内容</label>' +
       '<input type="text" class="edit-title">' +
       '<details class="edit-details"><summary>場所・説明・画像</summary>' +
       '<label class="field-label">場所(任意)</label>' +
@@ -153,6 +166,7 @@
       '<textarea class="edit-description"></textarea>' +
       '<label class="field-label">画像を添付(任意・5MBまで)</label>' +
       '<input type="file" class="edit-image" accept="image/png,image/jpeg,image/gif,image/webp">' +
+      '<img class="edit-image-preview image-preview" alt="添付する画像のプレビュー" hidden>' +
       '<div class="empty-hint edit-image-name"></div>' +
       '<button type="button" class="btn-secondary edit-clear-image">添付画像の選択を解除</button>' +
       '<div class="empty-hint" style="margin-bottom:12px;">添付するとリンクを知っている人は誰でも閲覧できる状態でDriveに保存されます</div></details>' +
@@ -166,39 +180,45 @@
         '<button class="btn-primary edit-save" style="margin-top:0;">保存</button>' +
       '</div>' +
       '<button class="btn-secondary edit-delete" style="margin-top:8px; color: var(--error);">この予定を削除</button>';
+  }
 
-    ['title', 'location', 'description', 'image', 'start', 'end'].forEach(function(field) {
-      var control = wrap.querySelector('.edit-' + field);
-      if (control) {
-        control.id = 'edit-' + field;
-        if (control.previousElementSibling) control.previousElementSibling.setAttribute('for', control.id);
-      }
-    });
+  function getOrCreateEditDraft(ev) {
     var draft = appState.editDraft;
-    if (!draft || draft.id !== ev.id) {
-      draft = { id: ev.id, title: ev.title, location: ev.location || '',
-        description: ev.description || '', start: DateTime.formatLocal(ev.start),
-        end: DateTime.formatLocal(ev.end), file: null, imageName: '', dirty: false };
-      appState.editDraft = draft;
+    if (draft && draft.id === ev.id) return draft;
+    draft = { id: ev.id, title: ev.title, location: ev.location || '',
+      description: ev.description || '', start: DateTime.formatLocal(ev.start),
+      end: DateTime.formatLocal(ev.end), file: null, imageName: '', dirty: false };
+    appState.editDraft = draft;
+    return draft;
+  }
+
+  // 選択済みの画像ファイルをサムネイルとして表示する。復元直後の画像名だけの状態では本体がないため表示しない。
+  function updateEditImagePreview(wrap, file) {
+    var img = wrap.querySelector('.edit-image-preview');
+    if (wrap._editPreviewUrl && typeof URL !== 'undefined') URL.revokeObjectURL(wrap._editPreviewUrl);
+    wrap._editPreviewUrl = null;
+    if (file && typeof URL !== 'undefined') {
+      wrap._editPreviewUrl = URL.createObjectURL(file);
+      img.src = wrap._editPreviewUrl;
+      img.hidden = false;
+    } else {
+      img.hidden = true;
     }
+  }
+
+  function applyEditDraftValues(wrap, draft, endInput) {
     wrap.querySelector('.edit-title').value = draft.title;
     wrap.querySelector('.edit-location').value = draft.location;
     wrap.querySelector('.edit-description').value = draft.description;
     wrap.querySelector('.edit-start').value = draft.start;
-    var endInput = wrap.querySelector('.edit-end');
     if (endInput) endInput.value = draft.end;
     wrap.querySelector('.edit-image-name').textContent = draft.file ? draft.file.name :
       draft.imageName ? '画像「' + draft.imageName + '」を再選択してください。不要なら選択を解除できます。' : '';
-    var clearImage = wrap.querySelector('.edit-clear-image');
-    clearImage.addEventListener('click', function() {
-      draft.file = null;
-      draft.imageName = '';
-      draft.dirty = true;
-      wrap.querySelector('.edit-image').value = '';
-      wrap.querySelector('.edit-image-name').textContent = '';
-      persistDrafts();
-    });
+    updateEditImagePreview(wrap, draft.file);
     wrap.querySelector('.edit-details').open = !!(draft.location || draft.description || draft.file || draft.imageName);
+  }
+
+  function wireEditFormFields(wrap, draft) {
     ['title', 'location', 'description', 'start', 'end'].forEach(function(field) {
       var input = wrap.querySelector('.edit-' + field);
       if (input) input.addEventListener('input', function() { draft[field] = input.value; draft.dirty = true; persistDrafts(); });
@@ -208,9 +228,21 @@
       draft.imageName = '';
       draft.dirty = true;
       wrap.querySelector('.edit-image-name').textContent = draft.file ? draft.file.name : '';
+      updateEditImagePreview(wrap, draft.file);
       persistDrafts();
     });
+    wrap.querySelector('.edit-clear-image').addEventListener('click', function() {
+      draft.file = null;
+      draft.imageName = '';
+      draft.dirty = true;
+      wrap.querySelector('.edit-image').value = '';
+      wrap.querySelector('.edit-image-name').textContent = '';
+      updateEditImagePreview(wrap, null);
+      persistDrafts();
+    });
+  }
 
+  function wireEditFormActions(wrap, ev, draft, endInput) {
     wrap.querySelector('.edit-cancel').addEventListener('click', function() {
       appState.editingEventId = null;
       appState.editDraft = null;
@@ -256,6 +288,27 @@
         await refreshDashboard();
       });
     });
+  }
+
+  function buildEditForm(ev) {
+    var wrap = document.createElement('div');
+    wrap.className = 'today-edit';
+    wrap.addEventListener('click', function(e) { e.stopPropagation(); });
+    wrap.innerHTML = editFormMarkup(ev);
+
+    ['title', 'location', 'description', 'image', 'start', 'end'].forEach(function(field) {
+      var control = wrap.querySelector('.edit-' + field);
+      if (control) {
+        control.id = 'edit-' + field;
+        if (control.previousElementSibling) control.previousElementSibling.setAttribute('for', control.id);
+      }
+    });
+
+    var draft = getOrCreateEditDraft(ev);
+    var endInput = wrap.querySelector('.edit-end');
+    applyEditDraftValues(wrap, draft, endInput);
+    wireEditFormFields(wrap, draft);
+    wireEditFormActions(wrap, ev, draft, endInput);
 
     return wrap;
   }
@@ -340,19 +393,33 @@
     var finishCard = document.getElementById('finishCard');
     clearInterval(appState.timers.status);
 
+    el.innerHTML = '';
     if (status.active) {
       dot.classList.add('active');
       finishCard.style.display = '';
-      var titleLine = escapeHtml(status.title) +
-        (status.location ? ' <span class="elapsed">@ ' + escapeHtml(status.location) + '</span>' : '');
-      el.innerHTML = '<span class="doing">' + titleLine + '</span>' +
-        '<span class="elapsed" id="elapsedText"></span>';
+      var doing = document.createElement('span');
+      doing.className = 'doing';
+      doing.textContent = status.location ? status.title + ' ' : status.title;
+      if (status.location) {
+        var locationSpan = document.createElement('span');
+        locationSpan.className = 'elapsed';
+        locationSpan.textContent = '@ ' + status.location;
+        doing.appendChild(locationSpan);
+      }
+      var elapsedSpan = document.createElement('span');
+      elapsedSpan.className = 'elapsed';
+      elapsedSpan.id = 'elapsedText';
+      el.appendChild(doing);
+      el.appendChild(elapsedSpan);
       updateElapsed();
       appState.timers.status = setInterval(updateElapsed, 30000);
     } else {
       dot.classList.remove('active');
       finishCard.style.display = 'none';
-      el.innerHTML = '<span class="idle">現在なにも記録していません</span>';
+      var idle = document.createElement('span');
+      idle.className = 'idle';
+      idle.textContent = '現在なにも記録していません';
+      el.appendChild(idle);
     }
     updateStartButtonState();
   }
@@ -363,12 +430,6 @@
     if (!elText || !appState.status || !appState.status.active) return;
     var mins = DateTime.elapsedMinutes(appState.status.startTime, Date.now());
     elText.textContent = mins + '分前から';
-  }
-
-  function escapeHtml(s) {
-    return String(s).replace(/[&<>"']/g, function(c) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-    });
   }
 
   function setFinishTimeToNow() {

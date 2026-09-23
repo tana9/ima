@@ -116,6 +116,31 @@ test('編集フォームの場所・説明・画像を詳細欄にまとめる',
   await expect(details.getByLabel('場所(任意)', { exact: true })).toBeVisible();
 });
 
+test('選択した画像をサムネイルでプレビューし、解除すると消える', async ({ page }) => {
+  await page.goto('/?scenario=empty');
+  await page.getByText('場所・説明・画像を追加', { exact: true }).click();
+  await expect(page.locator('#imagePreview')).toBeHidden();
+  await page.locator('#imageInput').setInputFiles({ name: '写真.png', mimeType: 'image/png',
+    buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]) });
+  await expect(page.locator('#imagePreview')).toBeVisible();
+  await expect(page.locator('#imagePreview')).toHaveAttribute('src', /^blob:/);
+  await page.getByRole('button', { name: '画像の選択を解除' }).click();
+  await expect(page.locator('#imagePreview')).toBeHidden();
+
+  await page.getByLabel('今やっていること').fill('編集欄プレビューの確認');
+  await page.getByRole('button', { name: '開始する', exact: true }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await page.locator('.today-item').click();
+  await page.getByText('場所・説明・画像', { exact: true }).click();
+  await expect(page.locator('.edit-image-preview')).toBeHidden();
+  await page.locator('.edit-image').setInputFiles({ name: '写真2.png', mimeType: 'image/png',
+    buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]) });
+  await expect(page.locator('.edit-image-preview')).toBeVisible();
+  await expect(page.locator('.edit-image-preview')).toHaveAttribute('src', /^blob:/);
+  await page.getByRole('button', { name: '添付画像の選択を解除' }).click();
+  await expect(page.locator('.edit-image-preview')).toBeHidden();
+});
+
 test('記録をキーボードで編集でき、確認画面のフォーカスを保持して元に戻す', async ({ page }) => {
   await page.goto('/');
   const row = page.getByRole('button', { name: /資料作成/ });

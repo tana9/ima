@@ -305,6 +305,7 @@
     </div>
     <div class="finish-row">
       <input type="time" id="finishTimeInput" aria-label="終了時刻を直接指定(過去の時刻も指定可)">
+      <button class="btn-secondary" style="width:auto; flex:0 0 auto; padding:13px 14px;" onclick="setFinishTimeToNow()">今</button>
       <button class="btn-secondary" onclick="handleFinish()">指定時刻で終了</button>
     </div>
   </div>
@@ -498,6 +499,10 @@
     return String(s).replace(/[&<>"']/g, function(c) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
     });
+  }
+
+  function setFinishTimeToNow() {
+    document.getElementById('finishTimeInput').value = formatTime(Date.now());
   }
 
   function handleStart() {

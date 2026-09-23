@@ -1,0 +1,400 @@
+<script>
+
+  function init() {
+    document.getElementById('titleInput').addEventListener('input', updateStartButtonState);
+    document.getElementById('titleInput').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        handleStart();
+      }
+    });
+    document.getElementById('signToggleBtn').innerHTML = ICON_CIRCLE_PLUS;
+    refreshDashboard();
+  }
+
+  function updateStartButtonState() {
+    var title = document.getElementById('titleInput').value.trim();
+    var status = appState.status;
+    var duplicate = !!status && status.active && title === status.title;
+    document.getElementById('startBtn').disabled = appState.busy || appState.loading ||
+      appState.loadError || !status || !title || duplicate;
+    showDuplicateHint(duplicate);
+  }
+
+  function renderControls() {
+    var disabled = appState.busy || appState.loading || !appState.status || appState.loadError;
+    document.querySelectorAll('button, input, select, textarea').forEach(function(control) {
+      if (!control.closest('#confirmOverlay') && control.id !== 'retryLoadBtn') control.disabled = disabled;
+    });
+    document.getElementById('operationStatus').textContent = appState.busy ? '処理中...' :
+      appState.loading ? '読み込み中...' : appState.loadError ? '読み込みに失敗しました。再読み込みしてください。' : '';
+    var retry = document.getElementById('retryLoadBtn');
+    retry.hidden = !appState.loadError;
+    retry.disabled = appState.busy || appState.loading;
+    document.body.setAttribute('aria-busy', String(appState.busy || appState.loading));
+    updateStartButtonState();
+  }
+
+  function renderDashboard() {
+    renderStatus();
+    renderTodayEvents();
+    renderQuickList();
+  }
+
+  function showDuplicateHint(show) {
+    var hint = document.getElementById('duplicateHint');
+    if (hint) hint.style.display = show ? '' : 'none';
+  }
+
+  function renderTodayEvents() {
+    var el = document.getElementById('todayList');
+    el.innerHTML = '';
+    if (!appState.events.length) {
+      el.innerHTML = '<span class="empty-hint">まだ今日の記録がありません。</span>';
+      return;
+    }
+    appState.events.forEach(function(ev) {
+      var row = document.createElement('div');
+      row.className = 'today-item' + (ev.active ? ' active' : '');
+      var timeRange = DateTime.formatTime(ev.start) + '〜' + (ev.active ? '進行中' : DateTime.formatTime(ev.end));
+      var titleHtml = escapeHtml(ev.title) +
+        (ev.location ? '<br><span class="today-location">@ ' + escapeHtml(ev.location) + '</span>' : '');
+      row.innerHTML =
+        '<span class="today-time">' + timeRange + '</span>' +
+        '<span class="today-title">' + titleHtml + '</span>';
+      row.addEventListener('click', function() { toggleEdit(ev.id); });
+      el.appendChild(row);
+
+      if (appState.editingEventId === ev.id) {
+        el.appendChild(buildEditForm(ev));
+      }
+    });
+  }
+
+  function toggleEdit(id) {
+    if (appState.busy || appState.loading) return;
+    appState.editingEventId = (appState.editingEventId === id) ? null : id;
+    appState.editDraft = null;
+    renderTodayEvents();
+  }
+
+  function buildEditForm(ev) {
+    var wrap = document.createElement('div');
+    wrap.className = 'today-edit';
+    wrap.addEventListener('click', function(e) { e.stopPropagation(); });
+
+    wrap.innerHTML =
+      '<label class="field-label">内容</label>' +
+      '<input type="text" class="edit-title">' +
+      '<label class="field-label">場所(任意)</label>' +
+      '<input type="text" class="edit-location">' +
+      '<label class="field-label">説明(任意)</label>' +
+      '<textarea class="edit-description"></textarea>' +
+      '<label class="field-label">画像を添付(任意・5MBまで)</label>' +
+      '<input type="file" class="edit-image" accept="image/*">' +
+      '<div class="empty-hint edit-image-name"></div>' +
+      '<div class="empty-hint" style="margin-bottom:12px;">添付するとリンクを知っている人は誰でも閲覧できる状態でDriveに保存されます</div>' +
+      '<label class="field-label">開始</label>' +
+      '<input type="time" class="edit-start">' +
+      (ev.active
+        ? '<div class="empty-hint">進行中のため終了時刻はここでは変更できません(上の「終了する」から設定してください)</div>'
+        : '<label class="field-label">終了</label><input type="time" class="edit-end">') +
+      '<div class="finish-row">' +
+        '<button class="btn-secondary edit-cancel">キャンセル</button>' +
+        '<button class="btn-primary edit-save" style="margin-top:0;">保存</button>' +
+      '</div>' +
+      '<button class="btn-secondary edit-delete" style="margin-top:8px; color: var(--error);">この予定を削除</button>';
+
+    var draft = appState.editDraft;
+    if (!draft || draft.id !== ev.id) {
+      draft = { id: ev.id, title: ev.title, location: ev.location || '',
+        description: ev.description || '', start: DateTime.formatTime(ev.start),
+        end: DateTime.formatTime(ev.end), file: null };
+      appState.editDraft = draft;
+    }
+    wrap.querySelector('.edit-title').value = draft.title;
+    wrap.querySelector('.edit-location').value = draft.location;
+    wrap.querySelector('.edit-description').value = draft.description;
+    wrap.querySelector('.edit-start').value = draft.start;
+    var endInput = wrap.querySelector('.edit-end');
+    if (endInput) endInput.value = draft.end;
+    wrap.querySelector('.edit-image-name').textContent = draft.file ? draft.file.name : '';
+    ['title', 'location', 'description', 'start', 'end'].forEach(function(field) {
+      var input = wrap.querySelector('.edit-' + field);
+      if (input) input.addEventListener('input', function() { draft[field] = input.value; });
+    });
+    wrap.querySelector('.edit-image').addEventListener('change', function(e) {
+      draft.file = e.target.files[0] || null;
+      wrap.querySelector('.edit-image-name').textContent = draft.file ? draft.file.name : '';
+    });
+
+    wrap.querySelector('.edit-cancel').addEventListener('click', function() {
+      appState.editingEventId = null;
+      appState.editDraft = null;
+      renderTodayEvents();
+    });
+
+    wrap.querySelector('.edit-save').addEventListener('click', function() {
+      return runAction(async function() {
+        var title = wrap.querySelector('.edit-title').value.trim();
+        var location = wrap.querySelector('.edit-location').value.trim();
+        var description = wrap.querySelector('.edit-description').value.trim();
+        if (!title) throw new Error('内容を入力してください');
+        var start = DateTime.timeOnDate(ev.start, wrap.querySelector('.edit-start').value);
+        var end = endInput ? DateTime.timeOnDate(ev.end, endInput.value) : null;
+        DateTime.validateRange(start, end);
+        var file = validateImage(draft.file);
+        await callServer('updateEvent', ev.id, title, location, description, start, end);
+        showMessage('更新しました');
+        // 添付失敗時は編集フォームと選択済み画像を残して再試行できるようにする。
+        var attached = await attachSelectedImage(ev.id, file);
+        if (attached) {
+          appState.editingEventId = null;
+          appState.editDraft = null;
+        }
+        await refreshDashboard();
+      });
+    });
+
+    wrap.querySelector('.edit-delete').addEventListener('click', function() {
+      return runAction(async function() {
+        if (!(await showConfirm('「' + ev.title + '」を削除しますか?この操作は取り消せません。'))) return;
+        await callServer('deleteEvent', ev.id);
+        appState.editingEventId = null;
+        appState.editDraft = null;
+        showMessage('削除しました');
+        await refreshDashboard();
+      });
+    });
+
+    return wrap;
+  }
+
+  function renderQuickList() {
+    var select = document.getElementById('quickSelect');
+    select.innerHTML = '<option value="">選択してください</option>';
+    appState.titles.forEach(function(label) {
+      var opt = document.createElement('option');
+      opt.value = label;
+      opt.textContent = label;
+      select.appendChild(opt);
+    });
+  }
+
+  function applyQuickSelect() {
+    var select = document.getElementById('quickSelect');
+    if (select.value) {
+      document.getElementById('titleInput').value = select.value;
+    }
+    select.value = '';
+    updateStartButtonState();
+  }
+
+  function showMessage(text, isError) {
+    var el = document.getElementById('toast');
+    el.textContent = text;
+    el.className = isError ? 'error show' : 'show';
+    clearTimeout(appState.timers.toast);
+    appState.timers.toast = setTimeout(function() { el.className = el.className.replace('show', ''); }, 2600);
+  }
+
+  function showConfirm(message) {
+    return new Promise(function(resolve) {
+      var overlay = document.getElementById('confirmOverlay');
+      var msgEl = document.getElementById('confirmMessage');
+      var okBtn = document.getElementById('confirmOkBtn');
+      var cancelBtn = document.getElementById('confirmCancelBtn');
+      var previousFocus = document.activeElement;
+      msgEl.textContent = message;
+      overlay.style.display = 'flex';
+      okBtn.focus();
+
+      function cleanup(result) {
+        overlay.style.display = 'none';
+        okBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        overlay.removeEventListener('click', onOverlayClick);
+        document.removeEventListener('keydown', onKeydown);
+        if (previousFocus && previousFocus.focus) previousFocus.focus();
+        resolve(result);
+      }
+      function onOk() { cleanup(true); }
+      function onCancel() { cleanup(false); }
+      function onOverlayClick(e) { if (e.target === overlay) cleanup(false); }
+      function onKeydown(e) { if (e.key === 'Escape') cleanup(false); }
+
+      okBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+      overlay.addEventListener('click', onOverlayClick);
+      document.addEventListener('keydown', onKeydown);
+    });
+  }
+
+  function renderStatus() {
+    var status = appState.status;
+    var el = document.getElementById('status');
+    var dot = document.getElementById('statusDot');
+    var finishCard = document.getElementById('finishCard');
+    clearInterval(appState.timers.status);
+
+    if (status.active) {
+      dot.classList.add('active');
+      finishCard.style.display = '';
+      var titleLine = escapeHtml(status.title) +
+        (status.location ? ' <span class="elapsed">@ ' + escapeHtml(status.location) + '</span>' : '');
+      el.innerHTML = '<span class="doing">' + titleLine + '</span>' +
+        '<span class="elapsed" id="elapsedText"></span>';
+      updateElapsed();
+      appState.timers.status = setInterval(updateElapsed, 30000);
+    } else {
+      dot.classList.remove('active');
+      finishCard.style.display = 'none';
+      el.innerHTML = '<span class="idle">現在なにも記録していません</span>';
+    }
+    updateStartButtonState();
+  }
+
+  function updateElapsed() {
+    var elText = document.getElementById('elapsedText');
+    if (!elText || !appState.status || !appState.status.active) return;
+    var mins = DateTime.elapsedMinutes(appState.status.startTime, Date.now());
+    elText.textContent = mins + '分前から';
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function(c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function setFinishTimeToNow() {
+    document.getElementById('finishTimeInput').value = DateTime.formatLocal(DateTime.roundUp(Date.now(), 5));
+  }
+
+  async function fillCurrentLocation() {
+    return runAction(async function() {
+      if (!navigator.geolocation) throw new Error('この端末では位置情報を利用できません');
+      var position = await new Promise(function(resolve, reject) {
+        navigator.geolocation.getCurrentPosition(resolve, function(error) {
+          var messages = {
+            1: '位置情報の利用が許可されていません(ブラウザの設定をご確認ください)',
+            2: '現在地を取得できませんでした(電波状況をご確認ください)',
+            3: '現在地の取得がタイムアウトしました'
+          };
+          reject(new Error(messages[error && error.code] || '現在地を取得できませんでした'));
+        }, { enableHighAccuracy: true, timeout: 10000 });
+      });
+      var url = 'https://maps.google.com/?q=' + position.coords.latitude.toFixed(6) + ',' +
+        position.coords.longitude.toFixed(6);
+      var input = document.getElementById('descriptionInput');
+      input.value = input.value ? input.value + '\n' + url : url;
+      showMessage('現在地を説明に追加しました');
+    });
+  }
+
+  async function handleStart() {
+    return runAction(async function() {
+      var input = document.getElementById('titleInput');
+      var title = input.value.trim();
+      if (!title) throw new Error('内容を入力してください');
+      if (appState.status.active && title === appState.status.title) throw new Error('すでに同じ内容で実行中です');
+      var location = document.getElementById('locationInput').value.trim();
+      var description = document.getElementById('descriptionInput').value.trim();
+      var imageInput = document.getElementById('imageInput');
+      var file = selectedImage(imageInput);
+      if (!(await showConfirm(title + ' を開始しますか?'))) return;
+      var result = await callServer('startActivity', title, location, description);
+      appState.status = result;
+      renderStatus();
+      input.value = '';
+      document.getElementById('descriptionInput').value = '';
+      document.getElementById('finishTimeInput').value = '';
+      showMessage(title + ' を開始しました');
+      var attached = await attachSelectedImage(result.eventId, file);
+      if (attached) imageInput.value = '';
+      await refreshDashboard();
+      scrollToStatus();
+    });
+  }
+
+  function scrollToStatus() {
+    document.querySelector('.status-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+  function selectedImage(fileInput) {
+    return validateImage(fileInput.files && fileInput.files[0]);
+  }
+
+  function validateImage(file) {
+    if (file && file.size > MAX_IMAGE_BYTES) throw new Error('画像が大きすぎます(5MBまで)');
+    return file || null;
+  }
+
+  function readImage(file) {
+    return new Promise(function(resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function() { resolve(reader.result.split(',')[1]); };
+      reader.onerror = function() { reject(new Error('画像の読み込みに失敗しました')); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  async function attachSelectedImage(eventId, file) {
+    if (!file) return true;
+    try {
+      var base64 = await readImage(file);
+      await callServer('attachImageToEvent', eventId, base64, file.type, file.name);
+      showMessage('画像を添付しました');
+      return true;
+    } catch (error) {
+      reportError(error, '予定は保存済みですが、画像の添付に失敗しました');
+      return false;
+    }
+  }
+
+  var ICON_CIRCLE_PLUS = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
+  var ICON_CIRCLE_MINUS = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
+
+  function toggleOffsetSign() {
+    appState.offsetSign = -appState.offsetSign;
+    var signBtn = document.getElementById('signToggleBtn');
+    signBtn.classList.toggle('negative', appState.offsetSign < 0);
+    signBtn.innerHTML = appState.offsetSign > 0 ? ICON_CIRCLE_PLUS : ICON_CIRCLE_MINUS;
+    var sign = appState.offsetSign > 0 ? '+' : '−';
+    document.querySelectorAll('.offset-btn').forEach(function(btn) {
+      btn.textContent = sign + btn.getAttribute('data-min') + '分';
+    });
+  }
+
+  function finishWithOffset(minutes) {
+    try {
+      var input = document.getElementById('finishTimeInput');
+      var base = input.value ? DateTime.parseLocal(input.value) : Date.now();
+      input.value = DateTime.formatLocal(DateTime.addMinutes(base, minutes * appState.offsetSign));
+    } catch (error) {
+      reportError(error);
+    }
+  }
+
+  async function handleFinish() {
+    // disabled中はブラウザの入力検証が省略されるため、ロック前にも検証する。
+    var input = document.getElementById('finishTimeInput');
+    if (!input.reportValidity()) return;
+    return runAction(async function() {
+      var value = input.value;
+      var end = value ? DateTime.parseLocal(value) : null;
+      if (end !== null && appState.status.active) DateTime.validateRange(appState.status.startTime, end);
+      if (!(await showConfirm(value ? value.replace('T', ' ') + ' に終了しますか?' : '今の時刻で終了しますか?'))) return;
+      appState.status = await callServer('finishActivity', end);
+      renderStatus();
+      showMessage('終了しました');
+      input.value = '';
+      await refreshDashboard();
+      scrollToStatus();
+    });
+  }
+
+  init();
+</script>

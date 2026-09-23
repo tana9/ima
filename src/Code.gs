@@ -19,8 +19,7 @@ function getImaCalendar_() {
 }
 
 // 添付画像の保存先「ima」フォルダを取得し、なければ作成する。
-// drive.file スコープでは名前検索(getFoldersByName)ができないため、
-// 作成したフォルダの ID を保存しておき、次回以降はその ID から取得する。
+// 作成したフォルダの ID を保存し、同名フォルダと混同せず次回以降も取得する。
 function getImaFolder_() {
   if (cachedFolder_) return cachedFolder_;
   var props = PropertiesService.getUserProperties();
@@ -51,6 +50,19 @@ function doGet(e) {
     .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
 }
 
+// アプリ内の静的なHTML断片のみを読み込む。末尾 _ によりクライアントからは呼べない。
+function include_(filename) {
+  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+}
+
+function getDashboard() {
+  return {
+    status: getCurrentStatus(),
+    events: getTodayEvents(),
+    titles: getRecentTitles(8)
+  };
+}
+
 // Android などでホーム画面に追加した際のアプリらしい見た目のための Web App Manifest。
 // Service Worker がないため正式な「インストール」条件は満たさないが、
 // 対応するブラウザではホーム画面追加後の表示に反映される場合がある。
@@ -79,6 +91,7 @@ function getCurrentStatus() {
   }
   return {
     active: true,
+    eventId: id,
     title: event.getTitle(),
     location: event.getLocation(),
     description: event.getDescription(),
@@ -87,7 +100,7 @@ function getCurrentStatus() {
 }
 
 // 進行中のイベントがあれば、終了時刻を今の時刻(または開始時刻+1分)に確定させる
-function closeCurrentEvent_(endTime) {
+function closeCurrentEvent_(endTime, validateEnd) {
   var props = PropertiesService.getUserProperties();
   var id = props.getProperty(CURRENT_EVENT_ID_KEY);
   if (!id) return;
@@ -95,6 +108,7 @@ function closeCurrentEvent_(endTime) {
   var event = getImaCalendar_().getEventById(id);
   if (event) {
     var start = event.getStartTime();
+    if (validateEnd) validateEventRange_(start.getTime(), endTime.getTime());
     var actualEnd = endTime.getTime() > start.getTime()
       ? endTime
       : new Date(start.getTime() + 60 * 1000);
@@ -125,10 +139,11 @@ function startActivity(title, location, description) {
 
 // 進行中のタスクを終了する。endTimeMillis を省略した場合は今の時刻で終了する。
 function finishActivity(endTimeMillis) {
-  var endTime = (endTimeMillis === null || endTimeMillis === undefined)
+  var explicitEnd = endTimeMillis !== null && endTimeMillis !== undefined;
+  var endTime = !explicitEnd
     ? new Date()
-    : new Date(endTimeMillis);
-  closeCurrentEvent_(endTime);
+    : new Date(requireTimestamp_(endTimeMillis));
+  closeCurrentEvent_(endTime, explicitEnd);
   return { active: false };
 }
 
@@ -187,23 +202,11 @@ function updateEvent(eventId, title, location, description, startMillis, endMill
   var event = getImaCalendar_().getEventById(eventId);
   if (!event) throw new Error('予定が見つかりませんでした');
 
+  var range = validateEventRange_(startMillis, endMillis, event.getEndTime().getTime());
+  event.setTime(new Date(range.start), new Date(range.end));
   event.setTitle(title);
   event.setLocation(location);
   event.setDescription(description);
-
-  var start = new Date(startMillis);
-  var end = (endMillis === null || endMillis === undefined)
-    ? event.getEndTime()
-    : new Date(endMillis);
-
-  if (end.getTime() <= start.getTime()) {
-    if (endMillis === null || endMillis === undefined) {
-      end = new Date(start.getTime() + 60 * 1000);
-    } else {
-      throw new Error('終了時刻は開始時刻より後にしてください');
-    }
-  }
-  event.setTime(start, end);
 
   return { updated: true };
 }

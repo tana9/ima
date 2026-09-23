@@ -1,0 +1,17 @@
+<script>
+// google.script.run の呼び出しはここに集約する。
+function callServer(method) {
+  var args = Array.prototype.slice.call(arguments, 1);
+  return new Promise(function(resolve, reject) {
+    var runner = google.script.run.withSuccessHandler(resolve).withFailureHandler(function(error) {
+      reject(new Error(error && error.message ? error.message : '通信に失敗しました。もう一度お試しください。'));
+    });
+    runner[method].apply(runner, args);
+  });
+}
+
+function reportError(error, prefix) {
+  showMessage((prefix ? prefix + ': ' : '') +
+    (error && error.message ? error.message : '処理に失敗しました。もう一度お試しください。'), true);
+}
+</script>

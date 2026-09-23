@@ -1,0 +1,56 @@
+<script>
+// DOMや通信に依存しない、端末のローカル日時の変換・計算。
+var DateTime = (function() {
+  var MINUTE = 60 * 1000;
+  function pad(value) { return ('0' + value).slice(-2); }
+  function date(millis) {
+    if (typeof millis !== 'number' || !isFinite(millis)) throw new Error('有効な日時を入力してください');
+    var result = new Date(millis);
+    if (!isFinite(result.getTime())) throw new Error('有効な日時を入力してください');
+    return result;
+  }
+  function formatTime(millis) {
+    var d = date(millis);
+    return pad(d.getHours()) + ':' + pad(d.getMinutes());
+  }
+  function formatLocal(millis) {
+    var d = date(millis);
+    return String(d.getFullYear()).padStart(4, '0') + '-' + pad(d.getMonth() + 1) + '-' +
+      pad(d.getDate()) + 'T' + formatTime(millis);
+  }
+  function parseLocal(value) {
+    if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/.test(value)) throw new Error('有効な日時を入力してください');
+    var millis = new Date(value).getTime();
+    // 存在しない日付や、夏時間の切り替えで存在しない時刻の自動補正を拒否する。
+    if (!isFinite(millis) || formatLocal(millis) !== value) throw new Error('有効な日時を入力してください');
+    return millis;
+  }
+  function timeOnDate(baseMillis, value) {
+    if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(value)) throw new Error('有効な時刻を入力してください');
+    // 時刻を変更していなければ、入力欄に表示されない秒・ミリ秒も保持する。
+    if (formatTime(baseMillis) === value) return baseMillis;
+    return parseLocal(formatLocal(baseMillis).slice(0, 10) + 'T' + value);
+  }
+  function addMinutes(millis, minutes) {
+    return date(date(millis).getTime() + minutes * MINUTE).getTime();
+  }
+  function roundUp(millis, minutes) {
+    if (!(minutes > 0)) throw new Error('丸める間隔は正の数にしてください');
+    return date(Math.ceil(date(millis).getTime() / (minutes * MINUTE)) * minutes * MINUTE).getTime();
+  }
+  function validateRange(start, end) {
+    date(start);
+    if (end !== null) {
+      date(end);
+      if (end <= start) throw new Error('終了時刻は開始時刻より後にしてください');
+    }
+    return { start: start, end: end };
+  }
+  function elapsedMinutes(start, now) {
+    return Math.max(0, Math.round((date(now).getTime() - date(start).getTime()) / MINUTE));
+  }
+  return { formatTime: formatTime, formatLocal: formatLocal, parseLocal: parseLocal,
+    timeOnDate: timeOnDate, addMinutes: addMinutes, roundUp: roundUp,
+    validateRange: validateRange, elapsedMinutes: elapsedMinutes };
+})();
+</script>

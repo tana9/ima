@@ -1,0 +1,67 @@
+<script>
+var appState = {
+  status: null,
+  events: [],
+  titles: [],
+  editingEventId: null,
+  editDraft: null,
+  busy: false,
+  loading: false,
+  loadError: false,
+  refreshVersion: 0,
+  offsetSign: 1,
+  timers: { status: null, toast: null }
+};
+
+function applyDashboard(snapshot) {
+  appState.status = snapshot.status;
+  appState.events = snapshot.events || [];
+  appState.titles = snapshot.titles || [];
+  if (!appState.events.some(function(event) { return event.id === appState.editingEventId; })) {
+    appState.editingEventId = null;
+    appState.editDraft = null;
+  }
+}
+
+// 古い応答で新しい画面状態を上書きしない。
+async function refreshDashboard() {
+  var version = ++appState.refreshVersion;
+  appState.loading = true;
+  appState.loadError = false;
+  renderControls();
+  try {
+    var snapshot = await callServer('getDashboard');
+    if (version !== appState.refreshVersion) return false;
+    applyDashboard(snapshot);
+    renderDashboard();
+    return true;
+  } catch (error) {
+    if (version === appState.refreshVersion) {
+      appState.loadError = true;
+      reportError(error, '画面の更新に失敗しました');
+    }
+    return false;
+  } finally {
+    if (version === appState.refreshVersion) {
+      appState.loading = false;
+      renderControls();
+    }
+  }
+}
+
+// 確認ダイアログを開く前から完了まで、変更操作を1つに制限する。
+async function runAction(action) {
+  if (appState.busy || appState.loading || !appState.status || appState.loadError) return;
+  appState.busy = true;
+  ++appState.refreshVersion;
+  renderControls();
+  try {
+    return await action();
+  } catch (error) {
+    reportError(error);
+  } finally {
+    appState.busy = false;
+    renderControls();
+  }
+}
+</script>

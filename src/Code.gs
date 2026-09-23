@@ -10,6 +10,21 @@ var IMA_FOLDER_ID_KEY = 'IMA_FOLDER_ID';
 var cachedCalendar_ = null;
 var cachedFolder_ = null;
 
+// 同じ利用者の別タブ・別端末からの操作も直列化する。
+function withUserLock_(action) {
+  var lock = LockService.getUserLock();
+  if (!lock.tryLock(10000)) throw new Error('別の操作を処理中です。少し待って再試行してください');
+  try { return action(); } finally { lock.releaseLock(); }
+}
+
+function requireCurrentEvent_(expectedId) {
+  var currentId = PropertiesService.getUserProperties().getProperty(CURRENT_EVENT_ID_KEY);
+  if (expectedId === undefined || (expectedId !== null && typeof expectedId !== 'string') || currentId !== expectedId) {
+    throw new Error('進行中の作業が変更されています。「再読み込み」で確認してから操作してください');
+  }
+  return currentId;
+}
+
 // 「ima」という名前の専用カレンダーを取得し、なければ作成する(1回のリクエスト内ではキャッシュする)
 function getImaCalendar_() {
   if (cachedCalendar_) return cachedCalendar_;
@@ -56,8 +71,12 @@ function include_(filename) {
 }
 
 function getDashboard() {
+  return withUserLock_(getDashboard_);
+}
+
+function getDashboard_() {
   return {
-    status: getCurrentStatus(),
+    status: getCurrentStatus_(),
     events: getTodayEvents(),
     titles: getRecentTitles(8)
   };
@@ -80,6 +99,10 @@ function buildManifestResponse_() {
 }
 
 function getCurrentStatus() {
+  return withUserLock_(getCurrentStatus_);
+}
+
+function getCurrentStatus_() {
   var props = PropertiesService.getUserProperties();
   var id = props.getProperty(CURRENT_EVENT_ID_KEY);
   if (!id) return { active: false };
@@ -115,27 +138,56 @@ function closeCurrentEvent_(endTime, validateEnd) {
 }
 
 // 開始時刻は現在時刻を5分単位で切り捨てる。前のタスクも同じ時刻で自動終了する。
-function startActivity(title, location, description) {
+function startActivity(title, location, description, expectedId) {
+  return withUserLock_(function() { return startActivity_(title, location, description, expectedId); });
+}
+
+function startActivity_(title, location, description, expectedId) {
   title = (title || '').trim();
   location = (location || '').trim();
   description = (description || '').trim();
   if (!title) throw new Error('内容を入力してください');
 
+  var previousId = requireCurrentEvent_(expectedId);
+  var calendar = getImaCalendar_();
+  var previous = previousId ? calendar.getEventById(previousId) : null;
+  var previousStart = previous ? previous.getStartTime() : null;
+  var previousEnd = previous ? previous.getEndTime() : null;
   var start = new Date(DateRules.roundDown(Date.now(), 5));
-  closeCurrentEvent_(start);
 
   var tentativeEnd = new Date(start.getTime() + TENTATIVE_MINUTES * 60 * 1000);
   var options = {};
   if (location) options.location = location;
   if (description) options.description = description;
-  var event = getImaCalendar_().createEvent(title, start, tentativeEnd, options);
-
-  PropertiesService.getUserProperties().setProperty(CURRENT_EVENT_ID_KEY, event.getId());
+  // 新規作成に失敗しても、前の記録と進行中状態は変更しない。
+  var event = calendar.createEvent(title, start, tentativeEnd, options);
+  var props = PropertiesService.getUserProperties();
+  try {
+    if (previous) previous.setTime(previousStart, new Date(DateRules.closeEnd(previousStart.getTime(), start.getTime(), false)));
+    props.setProperty(CURRENT_EVENT_ID_KEY, event.getId());
+  } catch (error) {
+    var recoveryFailed = false;
+    // 一つの復旧に失敗しても、残りの復旧を試みる。
+    [function() { if (previous) previous.setTime(previousStart, previousEnd); },
+      function() { if (previousId) props.setProperty(CURRENT_EVENT_ID_KEY, previousId); else props.deleteProperty(CURRENT_EVENT_ID_KEY); },
+      function() { event.deleteEvent(); }].forEach(function(recover) {
+        try { recover(); } catch (_) { recoveryFailed = true; }
+      });
+    if (recoveryFailed) throw new Error('開始に失敗し、元の状態への復旧も完了できませんでした。カレンダーの記録を確認して再読み込みしてください');
+    throw error;
+  }
   return { active: true, title: title, location: location, description: description, startTime: start.getTime(), eventId: event.getId() };
 }
 
 // 進行中のタスクを終了する。endTimeMillis の省略時は現在時刻を5分単位で切り上げる。
-function finishActivity(endTimeMillis) {
+function finishActivity(endTimeMillis, expectedId) {
+  return withUserLock_(function() {
+    requireCurrentEvent_(expectedId);
+    return finishActivity_(endTimeMillis);
+  });
+}
+
+function finishActivity_(endTimeMillis) {
   var explicitEnd = endTimeMillis !== null && endTimeMillis !== undefined;
   var endTime = !explicitEnd
     ? new Date(DateRules.roundUp(Date.now(), 5))
@@ -151,7 +203,7 @@ function getRecentTitles(limit) {
   var since = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
   var events = getImaCalendar_().getEvents(since, now);
 
-  var counts = {};
+  var counts = Object.create(null);
   var order = [];
   for (var i = events.length - 1; i >= 0; i--) {
     var t = events[i].getTitle();
@@ -191,6 +243,10 @@ function getTodayEvents() {
 
 // 予定の内容・場所・説明・時刻を編集する。進行中の予定は終了時刻を変更できない(endMillis を null にする)。
 function updateEvent(eventId, title, location, description, startMillis, endMillis) {
+  return withUserLock_(function() { return updateEvent_(eventId, title, location, description, startMillis, endMillis); });
+}
+
+function updateEvent_(eventId, title, location, description, startMillis, endMillis) {
   title = (title || '').trim();
   location = (location || '').trim();
   description = (description || '').trim();
@@ -210,6 +266,10 @@ function updateEvent(eventId, title, location, description, startMillis, endMill
 
 // 予定を削除する。進行中の予定を削除した場合は進行中状態も解除する。
 function deleteEvent(eventId) {
+  return withUserLock_(function() { return deleteEvent_(eventId); });
+}
+
+function deleteEvent_(eventId) {
   var event = getImaCalendar_().getEventById(eventId);
   if (!event) throw new Error('予定が見つかりませんでした');
   event.deleteEvent();
@@ -224,24 +284,60 @@ function deleteEvent(eventId) {
 
 // 画像を Google Drive にアップロードし、指定した予定に添付ファイルとして紐付ける
 function attachImageToEvent(eventId, base64Data, mimeType, filename) {
+  return withUserLock_(function() { return attachImageToEvent_(eventId, base64Data, mimeType, filename); });
+}
+
+function attachImageToEvent_(eventId, base64Data, mimeType, filename) {
   if (!eventId) throw new Error('予定が指定されていません');
-  if (!base64Data) throw new Error('画像データがありません');
-
+  if (typeof base64Data !== 'string' || !base64Data) throw new Error('画像データがありません');
+  if (base64Data.length > Math.ceil(5 * 1024 * 1024 / 3) * 4) throw new Error('画像が大きすぎます(5MBまで)');
+  if (!/^image\/(png|jpeg|gif|webp)$/.test(mimeType)) throw new Error('画像はPNG・JPEG・GIF・WebPを選んでください');
+  if (base64Data.length % 4 !== 0 || !/^[A-Za-z0-9+/]*={0,2}$/.test(base64Data)) throw new Error('画像データが不正です');
   var bytes = Utilities.base64Decode(base64Data);
-  var blob = Utilities.newBlob(bytes, mimeType, filename || 'image');
-  var file = getImaFolder_().createFile(blob);
-  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
-
+  if (!bytes.length || bytes.length > 5 * 1024 * 1024) throw new Error('画像は5MB以下にしてください');
+  var header = bytes.slice(0, 12).map(function(value) { return value & 255; });
+  var signatures = {
+    'image/png': [137, 80, 78, 71, 13, 10, 26, 10], 'image/jpeg': [255, 216, 255],
+    'image/gif': [71, 73, 70, 56], 'image/webp': [82, 73, 70, 70]
+  };
+  if (!signatures[mimeType].every(function(value, index) { return header[index] === value; }) ||
+      (mimeType === 'image/webp' && header.slice(8, 12).join(',') !== '87,69,66,80')) {
+    throw new Error('画像の形式とデータが一致しません');
+  }
   var calendarId = getImaCalendar_().getId();
   var apiEventId = eventId.replace(/@.*$/, '');
   var event = Calendar.Events.get(calendarId, apiEventId);
-  event.attachments = (event.attachments || []).concat([{
-    fileUrl: file.getUrl(),
-    title: filename || file.getName(),
-    mimeType: mimeType
-  }]);
-
-  Calendar.Events.patch(event, calendarId, apiEventId, { supportsAttachments: true });
-
+  // 予定と画像内容から保存名を決め、応答が失われた後の再試行でも同じファイルを使う。
+  var digest = Utilities.computeDigest(Utilities.DigestAlgorithm.SHA_256, eventId + ':' + base64Data)
+    .map(function(value) { return ('0' + (value & 255).toString(16)).slice(-2); }).join('');
+  var folder = getImaFolder_();
+  var storedName = 'ima-' + digest;
+  var matches = folder.getFilesByName(storedName);
+  var file = null;
+  while (matches.hasNext()) {
+    var candidate = matches.next();
+    if (!candidate.isTrashed()) { file = candidate; break; }
+  }
+  if (!file) file = folder.createFile(Utilities.newBlob(bytes, mimeType, storedName));
+  function isAttached(record) {
+    return (record.attachments || []).some(function(item) { return item.fileId === file.getId() || item.fileUrl === file.getUrl(); });
+  }
+  if (isAttached(event)) return { attached: true, url: file.getUrl() };
+  try {
+    file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+    var attachments = (event.attachments || []).concat([{ fileUrl: file.getUrl(), title: filename || '画像', mimeType: mimeType }]);
+    Calendar.Events.patch({ attachments: attachments }, calendarId, apiEventId, { supportsAttachments: true });
+  } catch (error) {
+    // 更新成功後に応答だけ失われた場合、添付済みのファイルを削除しない。
+    var current;
+    try { current = Calendar.Events.get(calendarId, apiEventId); } catch (_) {
+      throw new Error('画像の保存結果を確認できません。同じ画像で再試行してください');
+    }
+    if (isAttached(current)) return { attached: true, url: file.getUrl() };
+    try { file.setTrashed(true); } catch (_) {
+      throw new Error('画像を添付できず、Driveのファイルも片付けられませんでした。同じ画像で再試行してください');
+    }
+    throw error;
+  }
   return { attached: true, url: file.getUrl() };
 }

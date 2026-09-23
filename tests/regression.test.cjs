@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const { test } = require('node:test');
 const { source, client } = require('./helpers.cjs');
+const LockService = { getUserLock: () => ({ tryLock: () => true, releaseLock() {} }) };
 
 test('開始時刻は5分単位で切り捨て、前のタスクも同じ時刻で終了する', () => {
   for (const [now, expected] of [
@@ -14,7 +15,7 @@ test('開始時刻は5分単位で切り捨て、前のタスクも同じ時刻�
       constructor(...args) { super(...(args.length ? args : [Date.parse(now)])); }
       static now() { return Date.parse(now); }
     }
-    const context = vm.createContext({ Date: FixedDate });
+    const context = vm.createContext({ Date: FixedDate, LockService });
     vm.runInContext(source('DateValidation.gs'), context);
     vm.runInContext(source('Code.gs'), context);
     let currentId = '前の記録';
@@ -28,6 +29,7 @@ test('開始時刻は5分単位で切り捨て、前のタスクも同じ時刻�
     context.cachedCalendar_ = {
       getEventById: () => ({
         getStartTime: () => new Date(Date.parse(now) - 600000),
+        getEndTime: () => new Date(Date.parse(now) - 300000),
         setTime: (_, end) => { previousEnd = end.getTime(); }
       }),
       createEvent: (title, start, end, options) => {
@@ -35,7 +37,7 @@ test('開始時刻は5分単位で切り捨て、前のタスクも同じ時刻�
         return { getId: () => '新しい記録' };
       }
     };
-    const result = context.startActivity(' 作業 ', ' 事務所 ', ' メモ ');
+    const result = context.startActivity(' 作業 ', ' 事務所 ', ' メモ ', '前の記録');
     const expectedStart = Date.parse(expected);
     assert.deepEqual(created, { title: '作業', start: expectedStart,
       end: expectedStart + 300000, location: '事務所', description: 'メモ' });
@@ -84,7 +86,7 @@ test('終了日時の直接指定と未入力の両方を受け付ける', async
 });
 
 function server() {
-  const context = vm.createContext({});
+  const context = vm.createContext({ LockService });
   vm.runInContext(source('DateValidation.gs'), context);
   vm.runInContext(source('Code.gs'), context);
   const changes = [];
@@ -140,7 +142,7 @@ function finishServer() {
 test('不正な終了日時を指定しても記録を変更せず、進行中の状態を保持する', () => {
   for (const end of [1000, 2000, NaN, Infinity, '3000']) {
     const { context, changes, currentId } = finishServer();
-    assert.throws(() => context.finishActivity(end));
+    assert.throws(() => context.finishActivity(end, 'id'));
     assert.deepEqual(changes, []);
     assert.equal(currentId(), 'id');
   }
@@ -148,7 +150,7 @@ test('不正な終了日時を指定しても記録を変更せず、進行中�
 
 test('有効な終了日時の指定ではその日時で終了し、進行中の状態を解除する', () => {
   const { context, changes, currentId } = finishServer();
-  assert.equal(context.finishActivity(3000).active, false);
+  assert.equal(context.finishActivity(3000, 'id').active, false);
   assert.deepEqual(changes, [[2000, 3000]]);
   assert.equal(currentId(), null);
 });
@@ -165,7 +167,7 @@ test('終了時刻の既定値は5分単位で切り上げ、境界時刻と年�
       context.Date = class extends Date {
         static now() { return Date.parse(now); }
       };
-      context.finishActivity(value);
+      context.finishActivity(value, 'id');
       assert.deepEqual(changes, [[2000, Date.parse(expected)]]);
       assert.equal(currentId(), null);
     }

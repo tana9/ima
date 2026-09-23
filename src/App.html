@@ -24,12 +24,12 @@
   function renderControls() {
     var disabled = appState.busy || appState.loading || !appState.status || appState.loadError;
     document.querySelectorAll('button, input, select, textarea').forEach(function(control) {
-      if (!control.closest('#confirmOverlay') && control.id !== 'retryLoadBtn') control.disabled = disabled;
+      if (!control.closest('#confirmOverlay') && control.id !== 'retryLoadBtn' && control.id !== 'dismissErrorBtn') control.disabled = disabled;
     });
     document.getElementById('operationStatus').textContent = appState.busy ? '処理中...' :
       appState.loading ? '読み込み中...' : appState.loadError ? '読み込みに失敗しました。再読み込みしてください。' : '';
     var retry = document.getElementById('retryLoadBtn');
-    retry.hidden = !appState.loadError;
+    retry.hidden = false;
     retry.disabled = appState.busy || appState.loading;
     document.body.setAttribute('aria-busy', String(appState.busy || appState.loading));
     updateStartButtonState();
@@ -54,7 +54,9 @@
       return;
     }
     appState.events.forEach(function(ev) {
-      var row = document.createElement('div');
+      var row = document.createElement('button');
+      row.type = 'button';
+      row.setAttribute('aria-expanded', String(appState.editingEventId === ev.id));
       row.className = 'today-item' + (ev.active ? ' active' : '');
       var timeRange = DateTime.formatTime(ev.start) + '〜' + (ev.active ? '進行中' : DateTime.formatTime(ev.end));
       var titleHtml = escapeHtml(ev.title) +
@@ -72,7 +74,7 @@
   }
 
   function toggleEdit(id) {
-    if (appState.busy || appState.loading) return;
+    if (appState.busy || appState.loading || appState.loadError) return;
     appState.editingEventId = (appState.editingEventId === id) ? null : id;
     appState.editDraft = null;
     renderTodayEvents();
@@ -91,7 +93,7 @@
       '<label class="field-label">説明(任意)</label>' +
       '<textarea class="edit-description"></textarea>' +
       '<label class="field-label">画像を添付(任意・5MBまで)</label>' +
-      '<input type="file" class="edit-image" accept="image/*">' +
+      '<input type="file" class="edit-image" accept="image/png,image/jpeg,image/gif,image/webp">' +
       '<div class="empty-hint edit-image-name"></div>' +
       '<div class="empty-hint" style="margin-bottom:12px;">添付するとリンクを知っている人は誰でも閲覧できる状態でDriveに保存されます</div>' +
       '<label class="field-label">開始</label>' +
@@ -105,6 +107,13 @@
       '</div>' +
       '<button class="btn-secondary edit-delete" style="margin-top:8px; color: var(--error);">この予定を削除</button>';
 
+    ['title', 'location', 'description', 'image', 'start', 'end'].forEach(function(field) {
+      var control = wrap.querySelector('.edit-' + field);
+      if (control) {
+        control.id = 'edit-' + field;
+        if (control.previousElementSibling) control.previousElementSibling.setAttribute('for', control.id);
+      }
+    });
     var draft = appState.editDraft;
     if (!draft || draft.id !== ev.id) {
       draft = { id: ev.id, title: ev.title, location: ev.location || '',
@@ -191,6 +200,12 @@
   }
 
   function showMessage(text, isError) {
+    if (isError) {
+      document.getElementById('errorMessage').textContent = text;
+      document.getElementById('errorNotice').hidden = false;
+      document.getElementById('errorNotice').scrollIntoView({ block: 'nearest' });
+      return;
+    }
     var el = document.getElementById('toast');
     el.textContent = text;
     el.className = isError ? 'error show' : 'show';
@@ -221,7 +236,13 @@
       function onOk() { cleanup(true); }
       function onCancel() { cleanup(false); }
       function onOverlayClick(e) { if (e.target === overlay) cleanup(false); }
-      function onKeydown(e) { if (e.key === 'Escape') cleanup(false); }
+      function onKeydown(e) {
+        if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
+        if (e.key === 'Tab') {
+          e.preventDefault();
+          (document.activeElement === okBtn ? cancelBtn : okBtn).focus();
+        }
+      }
 
       okBtn.addEventListener('click', onOk);
       cancelBtn.addEventListener('click', onCancel);
@@ -303,7 +324,7 @@
       var imageInput = document.getElementById('imageInput');
       var file = selectedImage(imageInput);
       if (!(await showConfirm(title + ' を開始しますか?'))) return;
-      var result = await callServer('startActivity', title, location, description);
+      var result = await callServer('startActivity', title, location, description, appState.status.eventId || null);
       appState.status = result;
       renderStatus();
       input.value = '';
@@ -312,6 +333,12 @@
       showMessage(title + ' を開始しました');
       var attached = await attachSelectedImage(result.eventId, file);
       if (attached) imageInput.value = '';
+      else {
+        appState.editingEventId = result.eventId;
+        appState.editDraft = { id: result.eventId, title: title, location: location, description: description,
+          start: DateTime.formatTime(result.startTime), end: DateTime.formatTime(result.startTime), file: file };
+        imageInput.value = '';
+      }
       await refreshDashboard();
       scrollToStatus();
     });
@@ -329,6 +356,7 @@
 
   function validateImage(file) {
     if (file && file.size > MAX_IMAGE_BYTES) throw new Error('画像が大きすぎます(5MBまで)');
+    if (file && !/^image\/(png|jpeg|gif|webp)$/.test(file.type)) throw new Error('画像はPNG・JPEG・GIF・WebPを選んでください');
     return file || null;
   }
 
@@ -387,7 +415,7 @@
       var end = value ? DateTime.parseLocal(value) : null;
       if (end !== null && appState.status.active) DateTime.validateRange(appState.status.startTime, end);
       if (!(await showConfirm(value ? value.replace('T', ' ') + ' に終了しますか?' : '現在時刻を5分単位で切り上げて終了しますか?'))) return;
-      appState.status = await callServer('finishActivity', end);
+      appState.status = await callServer('finishActivity', end, appState.status.eventId || null);
       renderStatus();
       showMessage('終了しました');
       input.value = '';

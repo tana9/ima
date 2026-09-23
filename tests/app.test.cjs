@@ -45,7 +45,7 @@ test('初回読み込み失敗時に再試行を表示し、再試行成功後�
   assert.match(result.messages[0].message, /オフラインです/);
   handlers.getDashboard = () => ({ status: { active: false }, events: [], titles: [] });
   assert.equal(await context.refreshDashboard(), true);
-  assert.equal(fields.retryLoadBtn.hidden, true);
+  assert.equal(fields.retryLoadBtn.hidden, false);
   assert.equal(fields.startBtn.disabled, false);
 });
 
@@ -76,7 +76,7 @@ test('開始失敗時は入力を保持し、再試行できるよう操作ロ�
   const { context, handlers, fields, result } = client();
   fields.titleInput.value = '作業';
   fields.descriptionInput.value = 'メモ';
-  fields.imageInput.files = [{ name: '写真.png', size: 100 }];
+  fields.imageInput.files = [{ name: '写真.png', size: 100, type: 'image/png' }];
   handlers.startActivity = () => { throw new Error('オフラインです'); };
   await context.handleStart();
   assert.equal(fields.titleInput.value, '作業');

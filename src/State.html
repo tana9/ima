@@ -52,6 +52,7 @@ async function refreshDashboard() {
 // 確認ダイアログを開く前から完了まで、変更操作を1つに制限する。
 async function runAction(action) {
   if (appState.busy || appState.loading || !appState.status || appState.loadError) return;
+  var previousFocus = document.activeElement;
   appState.busy = true;
   ++appState.refreshVersion;
   renderControls();
@@ -62,6 +63,7 @@ async function runAction(action) {
   } finally {
     appState.busy = false;
     renderControls();
+    if (previousFocus && previousFocus.isConnected && !previousFocus.disabled) previousFocus.focus();
   }
 }
 </script>

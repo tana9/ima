@@ -16,6 +16,11 @@
 </head>
 <body>
 
+  <div id="errorNotice" class="card error-notice" hidden>
+    <p id="errorMessage" role="alert"></p>
+    <button type="button" id="dismissErrorBtn" class="btn-secondary" onclick="document.getElementById('errorNotice').hidden = true">エラーを閉じる</button>
+  </div>
+
   <div class="card status-card">
     <div class="status-dot" id="statusDot"></div>
     <div style="flex:1; min-width:0;">
@@ -48,7 +53,7 @@
           現在地を説明に追加
         </button>
         <label class="field-label" for="imageInput">画像を添付(任意・5MBまで)</label>
-        <input type="file" id="imageInput" accept="image/*">
+        <input type="file" id="imageInput" accept="image/png,image/jpeg,image/gif,image/webp">
         <div class="empty-hint" style="margin-bottom:12px;">添付するとリンクを知っている人は誰でも閲覧できる状態でDriveに保存されます</div>
       </div>
     </details>
@@ -88,7 +93,7 @@
     <div class="today-list" id="todayList"><span class="empty-hint">読み込み中...</span></div>
   </div>
 
-  <div id="toast"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
 
   <div id="confirmOverlay" class="confirm-overlay" style="display:none;">
     <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="confirmMessage">

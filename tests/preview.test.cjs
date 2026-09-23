@@ -30,15 +30,15 @@ test('サンプルデータで開始・編集・終了・削除でき、再読�
   const { context, mock } = previewContext();
   const initial = await context.callServer('getDashboard');
   assert.equal(initial.events.length, 2);
-  const started = await context.callServer('startActivity', '試験作業', '会議室', '確認用');
+  const started = await context.callServer('startActivity', '試験作業', '会議室', '確認用', initial.status.eventId);
   assert.equal(started.title, '試験作業');
   assert.equal(started.startTime % 300000, 0);
   const snapshot = await context.callServer('getDashboard');
   assert.equal(snapshot.events.filter(event => event.active).length, 1);
   await context.callServer('updateEvent', started.eventId, '修正した作業', '自宅', '修正済み', started.startTime - 60000, null);
   assert.equal((await context.callServer('getDashboard')).status.title, '修正した作業');
-  await assert.rejects(context.callServer('finishActivity', started.startTime - 120000), /終了時刻は開始時刻より後/);
-  assert.equal((await context.callServer('finishActivity', null)).active, false);
+  await assert.rejects(context.callServer('finishActivity', started.startTime - 120000, started.eventId), /終了時刻は開始時刻より後/);
+  assert.equal((await context.callServer('finishActivity', null, started.eventId)).active, false);
   await assert.rejects(context.callServer('attachImageToEvent', started.eventId), /Driveへの保存は実環境/);
   await context.callServer('deleteEvent', started.eventId);
   assert.equal((await context.callServer('getDashboard')).events.length, 2);

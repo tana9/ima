@@ -30,6 +30,9 @@ var google = (function() {
     event.end = DateRules.closeEnd(event.start, end, explicit);
     event.active = false;
   }
+  function requireCurrent(expectedId) {
+    if ((status().eventId || null) !== expectedId) throw new Error('進行中の作業が変更されています。「再読み込み」で確認してから操作してください');
+  }
   var methods = {
     getDashboard: function() {
       if (failNextRead) {
@@ -39,7 +42,8 @@ var google = (function() {
       return { status: status(), events: events.slice().sort(function(a, b) { return a.start - b.start; }),
         titles: Array.from(new Set(events.map(function(event) { return event.title; }))) };
     },
-    startActivity: function(title, location, description) {
+    startActivity: function(title, location, description, expectedId) {
+      requireCurrent(expectedId);
       title = title.trim();
       if (!title) throw new Error('内容を入力してください');
       var start = DateRules.roundDown(Date.now(), 5);
@@ -48,7 +52,8 @@ var google = (function() {
         start: start, end: start + interval, active: true });
       return status();
     },
-    finishActivity: function(end) {
+    finishActivity: function(end, expectedId) {
+      requireCurrent(expectedId);
       var explicit = end !== null && end !== undefined;
       close(explicit ? end : DateRules.roundUp(Date.now(), 5), explicit);
       return status();

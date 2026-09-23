@@ -54,17 +54,72 @@ test('表示状態を切り替え、通信エラーから再試行で復旧で�
   await expect(page.locator('#startBtn')).toBeDisabled();
   await page.getByRole('button', { name: '再読み込み', exact: true }).click();
   await expect(page.locator('#status')).toContainText('資料作成');
-  await expect(page.locator('#retryLoadBtn')).toBeHidden();
+  await expect(page.locator('#retryLoadBtn')).toBeEnabled();
 });
 
 test('不正な終了日時は確認を表示せず入力を保持する', async ({ page }) => {
   await page.goto('/');
   await page.locator('#finishTimeInput').fill('2026-09-23T09:00');
   await page.getByRole('button', { name: '指定時刻で終了' }).click();
-  await expect(page.locator('#toast')).toContainText('終了時刻は開始時刻より後');
+  await expect(page.locator('#errorMessage')).toContainText('終了時刻は開始時刻より後');
   await expect(page.getByRole('dialog')).toBeHidden();
   await expect(page.locator('#finishTimeInput')).toHaveValue('2026-09-23T09:00');
   await expect(page.locator('#status')).toContainText('資料作成');
+});
+
+test('記録をキーボードで編集でき、確認画面のフォーカスを保持して元に戻す', async ({ page }) => {
+  await page.goto('/');
+  const row = page.getByRole('button', { name: /資料作成/ });
+  await row.focus();
+  await page.keyboard.press('Enter');
+  await expect(row).toHaveAttribute('aria-expanded', 'true');
+  await page.getByLabel('内容', { exact: true }).fill('キーボードで編集');
+  await expect(page.locator('.edit-title')).toHaveValue('キーボードで編集');
+  const remove = page.getByRole('button', { name: 'この予定を削除' });
+  await remove.focus();
+  await page.keyboard.press('Enter');
+  await expect(page.getByRole('button', { name: 'OK', exact: true })).toBeFocused();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#confirmCancelBtn')).toBeFocused();
+  await page.keyboard.press('Shift+Tab');
+  await expect(page.locator('#confirmOkBtn')).toBeFocused();
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toBeHidden();
+  await expect(remove).toBeFocused();
+});
+
+test('古い画面からの終了を拒否し、エラーを保持したまま再読み込みで復旧する', async ({ page }) => {
+  await page.goto('/');
+  await expect(page.locator('#status')).toContainText('資料作成');
+  await page.evaluate(async () => {
+    await callServer('startActivity', '別端末の作業', '', '', appState.status.eventId);
+  });
+  await page.getByRole('button', { name: '指定時刻で終了' }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('進行中の作業が変更');
+  await page.waitForTimeout(2800);
+  await expect(page.getByRole('alert')).toBeVisible();
+  await page.getByRole('button', { name: '再読み込み', exact: true }).click();
+  await expect(page.locator('#status')).toContainText('別端末の作業');
+  await page.getByRole('button', { name: 'エラーを閉じる' }).click();
+  await expect(page.getByRole('alert')).toBeHidden();
+});
+
+test('開始後に画像添付が失敗した場合は保存済みの記録の編集欄で再試行できる', async ({ page }) => {
+  await page.goto('/?scenario=empty');
+  await page.getByLabel('今やっていること').fill('画像付きの作業');
+  await page.getByText('場所・説明・画像を追加', { exact: true }).click();
+  await page.locator('#imageInput').setInputFiles({ name: '写真.png', mimeType: 'image/png',
+    buffer: Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]) });
+  await page.getByRole('button', { name: '開始する', exact: true }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(page.locator('#status')).toContainText('画像付きの作業');
+  await expect(page.getByRole('alert')).toContainText('予定は保存済み');
+  await expect(page.locator('.edit-image-name')).toHaveText('写真.png');
+  await expect(page.locator('#imageInput')).toHaveValue('');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.locator('.edit-image-name')).toHaveText('写真.png');
+  await expect(page.locator('.today-item')).toHaveCount(1);
 });
 
 test('HTML保存で自動更新し、一時停止中は入力を保持して再開後に反映する', async ({ page }) => {

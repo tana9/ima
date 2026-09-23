@@ -33,8 +33,8 @@
 
   <div class="card">
     <h2>開始する(前のタスクは自動で終了します)</h2>
-    <p id="draftStatus" class="empty-hint" role="status">入力はこのタブに一時保存し、再読み込み後に復元します。</p>
-    <button type="button" class="btn-secondary" onclick="discardDrafts()">下書きを破棄</button>
+    <p id="draftStatus" class="empty-hint" role="status" hidden></p>
+    <button type="button" id="discardDraftsBtn" class="btn-secondary" onclick="discardDrafts()" hidden>下書きを破棄</button>
     <div class="empty-hint">開始時刻は現在時刻を5分単位で切り捨てます</div>
     <label class="field-label" for="quickSelect">過去にやったこと</label>
     <select id="quickSelect" onchange="applyQuickSelect()">
@@ -57,7 +57,7 @@
         <label class="field-label" for="imageInput">画像を添付(任意・5MBまで)</label>
         <input type="file" id="imageInput" accept="image/png,image/jpeg,image/gif,image/webp">
         <p id="imageDraftHint" class="empty-hint"></p>
-        <button type="button" class="btn-secondary" onclick="clearSelectedImage()">画像の選択を解除</button>
+        <button type="button" id="clearImageBtn" class="btn-secondary" onclick="clearSelectedImage()" hidden>画像の選択を解除</button>
         <div class="empty-hint" style="margin-bottom:12px;">添付するとリンクを知っている人は誰でも閲覧できる状態でDriveに保存されます</div>
       </div>
     </details>

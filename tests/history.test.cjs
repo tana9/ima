@@ -105,6 +105,26 @@ test('ページの作り直し後に開始・編集の下書きと日付を復�
   assert.match(second.fields.imageDraftHint.textContent, /写真.png.*再選択/);
 });
 
+test('下書きの有無に応じて破棄ボタンと案内文の表示を切り替える', async () => {
+  const { context, fields, result } = client();
+  context.initDrafts();
+  assert.equal(fields.discardDraftsBtn.hidden, true);
+  assert.equal(fields.draftStatus.hidden, true);
+
+  fields.titleInput.value = '資料作成';
+  await fields.titleInput.emit('input');
+  assert.equal(fields.discardDraftsBtn.hidden, false);
+  assert.equal(fields.draftStatus.hidden, false);
+  assert.match(fields.draftStatus.textContent, /一時保存/);
+
+  context.showConfirm = async () => true;
+  await context.discardDrafts();
+  assert.equal(fields.titleInput.value, '');
+  assert.equal(fields.discardDraftsBtn.hidden, true);
+  assert.equal(fields.draftStatus.hidden, true);
+  assert.ok(result.messages.some(m => !m.error && /破棄しました/.test(m.message)));
+});
+
 test('終了日時の下書きは同じ進行中の記録だけに復元する', () => {
   for (const eventId of ['前の作業', '新しい作業']) {
     const saved = storage();

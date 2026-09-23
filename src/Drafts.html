@@ -11,6 +11,7 @@ function initDrafts() {
   if (document.querySelector('meta[name="preview-revision"]') && typeof location !== 'undefined') {
     draftStorageKey += ':preview:' + (new URLSearchParams(location.search).get('scenario') || 'active');
   }
+  var restoredImageLabel = '';
   try {
     var saved = JSON.parse(sessionStorage.getItem(draftStorageKey) || 'null');
     if (saved && saved.version === 1) {
@@ -32,11 +33,13 @@ function initDrafts() {
         appState.editDraft = draft;
       }
       if (activity.location || activity.description || restoredImageName) document.querySelector('.more-options').open = true;
-      document.getElementById('draftStatus').textContent = 'このタブの入力を復元しました。' +
-        (restoredImageName || (edit && edit.imageName) ? '画像は再選択してください。' : '');
+      restoredImageLabel = restoredImageName || (edit && edit.imageName) || '';
+      if (hasActivityDraftContent() || appState.editDraft) {
+        showMessage('このタブの入力を復元しました。' + (restoredImageLabel ? '画像は再選択してください。' : ''));
+      }
     }
   } catch (_) {
-    document.getElementById('draftStatus').textContent = '下書きを復元できませんでした。入力して続けられます。';
+    showMessage('下書きを復元できませんでした。入力して続けられます。');
   }
   draftsReady = true;
   ['titleInput', 'locationInput', 'descriptionInput', 'finishTimeInput'].forEach(function(id) {
@@ -44,20 +47,35 @@ function initDrafts() {
   });
   document.getElementById('imageInput').addEventListener('change', function() {
     restoredImageName = '';
-    renderImageDraftHint();
     persistDrafts();
   });
-  renderImageDraftHint();
+  updateDraftUi();
 }
 
-function renderImageDraftHint() {
+function hasActivityDraftContent() {
+  return !!(document.getElementById('titleInput').value ||
+    document.getElementById('locationInput').value ||
+    document.getElementById('descriptionInput').value ||
+    document.getElementById('imageInput').files[0] ||
+    restoredImageName);
+}
+
+// 下書きの有無に応じて、破棄ボタンや説明文の表示・非表示を切り替える。
+function updateDraftUi() {
+  var hasImage = !!(document.getElementById('imageInput').files[0] || restoredImageName);
   document.getElementById('imageDraftHint').textContent = restoredImageName ? '画像「' + restoredImageName + '」を再選択してください。不要なら選択を解除できます。' : '';
+  document.getElementById('clearImageBtn').hidden = !hasImage;
+
+  var hasDraft = hasActivityDraftContent() || !!appState.editDraft;
+  document.getElementById('discardDraftsBtn').hidden = !hasDraft;
+  var statusEl = document.getElementById('draftStatus');
+  statusEl.hidden = !hasDraft;
+  statusEl.textContent = hasDraft ? '入力はこのタブに一時保存しています。再読み込みすると復元します。' : '';
 }
 
 function clearSelectedImage() {
   document.getElementById('imageInput').value = '';
   restoredImageName = '';
-  renderImageDraftHint();
   persistDrafts();
 }
 
@@ -83,7 +101,8 @@ function persistDrafts() {
     edit: edit ? { id: edit.id, title: edit.title, location: edit.location, description: edit.description,
       start: edit.start, end: edit.end, imageName: edit.file ? edit.file.name : edit.imageName || '' } : null };
   try { sessionStorage.setItem(draftStorageKey, JSON.stringify(saved)); }
-  catch (_) { document.getElementById('draftStatus').textContent = 'このブラウザでは下書きを保存できません。再読み込みすると入力が消えます。'; }
+  catch (_) { showMessage('このブラウザでは下書きを保存できません。再読み込みすると入力が消えます。', true); }
+  updateDraftUi();
 }
 
 async function discardDrafts() {
@@ -95,7 +114,7 @@ async function discardDrafts() {
     restoredFinishDraft = null;
     clearSelectedImage();
     renderTodayEvents();
-    document.getElementById('draftStatus').textContent = '下書きを破棄しました。入力はこのタブに一時保存します。';
+    showMessage('下書きを破棄しました。入力はこのタブに一時保存します。');
   });
 }
 </script>

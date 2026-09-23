@@ -228,11 +228,23 @@
       flex: 0 0 118px;
     }
     .finish-datetime-row {
-      flex-wrap: wrap;
+      flex-wrap: nowrap;
+      align-items: stretch;
     }
     .finish-datetime-row input[type="datetime-local"] {
-      flex: 1 1 100%;
+      flex: 1 1 auto;
       min-width: 0;
+    }
+    .finish-datetime-row .icon-btn {
+      flex: 0 0 48px;
+      min-height: 46px;
+    }
+    .finish-datetime-row .btn-with-icon {
+      flex: 1 1 132px;
+      min-width: 0;
+      padding-left: 10px;
+      padding-right: 10px;
+      white-space: nowrap;
     }
     .finish-row button {
       flex: 1 1 auto;

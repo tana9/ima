@@ -67,6 +67,19 @@ test('不正な終了日時は確認を表示せず入力を保持する', async
   await expect(page.locator('#status')).toContainText('資料作成');
 });
 
+test('終了欄の現在時刻ボタンは日時入力と同じ高さで横並びになる', async ({ page }) => {
+  await page.goto('/');
+  const input = page.locator('#finishTimeInput');
+  const nowButton = page.getByRole('button', { name: '現在時刻を入力' });
+  const finishButton = page.getByRole('button', { name: '指定時刻で終了' });
+  const boxes = await Promise.all([input.boundingBox(), nowButton.boundingBox(), finishButton.boundingBox()]);
+  expect(boxes[0].height).toBe(boxes[1].height);
+  expect(boxes[1].height).toBeGreaterThanOrEqual(44);
+  expect(boxes[0].y).toBe(boxes[1].y);
+  expect(boxes[2].y).toBe(boxes[0].y);
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
 test('記録をキーボードで編集でき、確認画面のフォーカスを保持して元に戻す', async ({ page }) => {
   await page.goto('/');
   const row = page.getByRole('button', { name: /資料作成/ });

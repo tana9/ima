@@ -32,6 +32,7 @@ function getCurrentStatus() {
   return {
     active: true,
     title: event.getTitle(),
+    location: event.getLocation(),
     startTime: event.getStartTime().getTime()
   };
 }
@@ -54,18 +55,20 @@ function closeCurrentEvent_(endTime) {
 }
 
 // 「今これをやっている」を開始する。前に進行中のタスクがあれば、そこで自動的に終了させる。
-function startActivity(title) {
+function startActivity(title, location) {
   title = (title || '').trim();
+  location = (location || '').trim();
   if (!title) throw new Error('内容を入力してください');
 
   var now = new Date();
   closeCurrentEvent_(now);
 
   var tentativeEnd = new Date(now.getTime() + TENTATIVE_MINUTES * 60 * 1000);
-  var event = getImaCalendar_().createEvent(title, now, tentativeEnd);
+  var options = location ? { location: location } : {};
+  var event = getImaCalendar_().createEvent(title, now, tentativeEnd, options);
 
   PropertiesService.getUserProperties().setProperty(CURRENT_EVENT_ID_KEY, event.getId());
-  return { active: true, title: title, startTime: now.getTime() };
+  return { active: true, title: title, location: location, startTime: now.getTime() };
 }
 
 // 進行中のタスクを終了する。endTimeMillis を省略した場合は今の時刻で終了する。

@@ -253,6 +253,8 @@
     <div class="quick-list" id="quickList"><span class="empty-hint">読み込み中...</span></div>
     <label class="field-label" for="titleInput">今やっていること</label>
     <input type="text" id="titleInput" placeholder="例: 資料作成">
+    <label class="field-label" for="locationInput">場所(任意)</label>
+    <input type="text" id="locationInput" placeholder="例: 会議室A">
     <button class="btn-primary" onclick="handleStart()">開始する</button>
     <label class="field-label">終了する</label>
     <div class="quick-list">
@@ -292,7 +294,9 @@
     titles.forEach(function(label) {
       var b = document.createElement('button');
       b.textContent = label;
-      b.onclick = function() { startActivityWith(label); };
+      b.onclick = function() {
+        startActivityWith(label, document.getElementById('locationInput').value.trim());
+      };
       list.appendChild(b);
     });
   }
@@ -317,7 +321,9 @@
     if (status.active) {
       dot.classList.add('active');
       lastStartTime = status.startTime;
-      el.innerHTML = '<span class="doing">' + escapeHtml(status.title) + '</span>' +
+      var titleLine = escapeHtml(status.title) +
+        (status.location ? ' <span class="elapsed">@ ' + escapeHtml(status.location) + '</span>' : '');
+      el.innerHTML = '<span class="doing">' + titleLine + '</span>' +
         '<span class="elapsed" id="elapsedText"></span>';
       updateElapsed();
       statusTimer = setInterval(updateElapsed, 30000);
@@ -344,11 +350,11 @@
     var input = document.getElementById('titleInput');
     var title = input.value.trim();
     if (!title) { showMessage('内容を入力してください', true); return; }
-    startActivityWith(title);
+    startActivityWith(title, document.getElementById('locationInput').value.trim());
     input.value = '';
   }
 
-  function startActivityWith(title) {
+  function startActivityWith(title, location) {
     google.script.run
       .withSuccessHandler(function(res) {
         renderStatus(res);
@@ -356,7 +362,7 @@
         refreshQuickList();
       })
       .withFailureHandler(function(err) { showMessage(err.message, true); })
-      .startActivity(title);
+      .startActivity(title, location || '');
   }
 
   function finishWithOffset(minutes) {

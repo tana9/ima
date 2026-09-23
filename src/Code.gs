@@ -101,3 +101,24 @@ function getRecentTitles(limit) {
   order.sort(function(a, b) { return counts[b] - counts[a]; });
   return order.slice(0, limit);
 }
+
+// 今日(0:00〜24:00)に登録された予定を、開始時刻順に返す
+function getTodayEvents() {
+  var now = new Date();
+  var start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  var end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+  var currentId = PropertiesService.getUserProperties().getProperty(CURRENT_EVENT_ID_KEY);
+
+  var events = getImaCalendar_().getEvents(start, end);
+  events.sort(function(a, b) { return a.getStartTime().getTime() - b.getStartTime().getTime(); });
+
+  return events.map(function(e) {
+    return {
+      title: e.getTitle(),
+      location: e.getLocation(),
+      start: e.getStartTime().getTime(),
+      end: e.getEndTime().getTime(),
+      active: e.getId() === currentId
+    };
+  });
+}

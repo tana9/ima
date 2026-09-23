@@ -209,6 +209,37 @@
       color: var(--text-muted);
       padding: 4px 0;
     }
+    .today-list .empty-hint {
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+    .today-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      gap: 12px;
+      padding: 9px 0;
+      border-bottom: 1px solid var(--border);
+      font-size: 14px;
+    }
+    .today-item:last-child { border-bottom: none; }
+    .today-time {
+      color: var(--text-muted);
+      font-size: 12px;
+      flex-shrink: 0;
+      font-variant-numeric: tabular-nums;
+    }
+    .today-item.active .today-time { color: var(--accent); font-weight: 600; }
+    .today-title {
+      text-align: right;
+      flex: 1;
+      min-width: 0;
+      overflow-wrap: break-word;
+    }
+    .today-location {
+      color: var(--text-muted);
+      font-size: 12px;
+    }
     #toast {
       position: fixed;
       left: 16px;
@@ -268,6 +299,11 @@
     </div>
   </div>
 
+  <div class="card">
+    <h2>今日の記録</h2>
+    <div class="today-list" id="todayList"><span class="empty-hint">読み込み中...</span></div>
+  </div>
+
   <div id="toast"></div>
 
 <script>
@@ -278,6 +314,36 @@
   function init() {
     refreshQuickList();
     refreshStatus();
+    refreshTodayEvents();
+  }
+
+  function refreshTodayEvents() {
+    google.script.run.withSuccessHandler(renderTodayEvents).getTodayEvents();
+  }
+
+  function formatTime(millis) {
+    var d = new Date(millis);
+    return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
+  }
+
+  function renderTodayEvents(events) {
+    var el = document.getElementById('todayList');
+    el.innerHTML = '';
+    if (!events || events.length === 0) {
+      el.innerHTML = '<span class="empty-hint">まだ今日の記録がありません。</span>';
+      return;
+    }
+    events.forEach(function(ev) {
+      var row = document.createElement('div');
+      row.className = 'today-item' + (ev.active ? ' active' : '');
+      var timeRange = formatTime(ev.start) + '〜' + (ev.active ? '進行中' : formatTime(ev.end));
+      var titleHtml = escapeHtml(ev.title) +
+        (ev.location ? '<br><span class="today-location">@ ' + escapeHtml(ev.location) + '</span>' : '');
+      row.innerHTML =
+        '<span class="today-time">' + timeRange + '</span>' +
+        '<span class="today-title">' + titleHtml + '</span>';
+      el.appendChild(row);
+    });
   }
 
   function refreshQuickList() {
@@ -360,6 +426,7 @@
         renderStatus(res);
         showMessage(title + ' を開始しました');
         refreshQuickList();
+        refreshTodayEvents();
       })
       .withFailureHandler(function(err) { showMessage(err.message, true); })
       .startActivity(title, location || '');
@@ -371,6 +438,7 @@
       .withSuccessHandler(function(res) {
         renderStatus(res);
         showMessage((minutes >= 0 ? '+' : '') + minutes + '分の時刻で終了しました');
+        refreshTodayEvents();
       })
       .withFailureHandler(function(err) { showMessage(err.message, true); })
       .finishActivity(endMillis);
@@ -390,6 +458,7 @@
         renderStatus(res);
         showMessage('終了しました');
         document.getElementById('finishTimeInput').value = '';
+        refreshTodayEvents();
       })
       .withFailureHandler(function(err) { showMessage(err.message, true); })
       .finishActivity(endMillis);

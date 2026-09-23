@@ -108,10 +108,7 @@ function closeCurrentEvent_(endTime, validateEnd) {
   var event = getImaCalendar_().getEventById(id);
   if (event) {
     var start = event.getStartTime();
-    if (validateEnd) validateEventRange_(start.getTime(), endTime.getTime());
-    var actualEnd = endTime.getTime() > start.getTime()
-      ? endTime
-      : new Date(start.getTime() + 60 * 1000);
+    var actualEnd = new Date(DateRules.closeEnd(start.getTime(), endTime.getTime(), validateEnd));
     event.setTime(start, actualEnd);
   }
   props.deleteProperty(CURRENT_EVENT_ID_KEY);
@@ -124,8 +121,7 @@ function startActivity(title, location, description) {
   description = (description || '').trim();
   if (!title) throw new Error('内容を入力してください');
 
-  var interval = 5 * 60 * 1000;
-  var start = new Date(Math.floor(Date.now() / interval) * interval);
+  var start = new Date(DateRules.roundDown(Date.now(), 5));
   closeCurrentEvent_(start);
 
   var tentativeEnd = new Date(start.getTime() + TENTATIVE_MINUTES * 60 * 1000);
@@ -142,7 +138,7 @@ function startActivity(title, location, description) {
 function finishActivity(endTimeMillis) {
   var explicitEnd = endTimeMillis !== null && endTimeMillis !== undefined;
   var endTime = !explicitEnd
-    ? new Date(Math.ceil(Date.now() / 300000) * 300000)
+    ? new Date(DateRules.roundUp(Date.now(), 5))
     : new Date(requireTimestamp_(endTimeMillis));
   closeCurrentEvent_(endTime, explicitEnd);
   return { active: false };

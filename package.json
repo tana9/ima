@@ -1,0 +1,9 @@
+{
+  "name": "ima",
+  "private": true,
+  "description": "作業をGoogleカレンダーに記録するWebアプリ",
+  "engines": { "node": ">=22" },
+  "devDependencies": {
+    "@playwright/test": "1.63.0"
+  }
+}

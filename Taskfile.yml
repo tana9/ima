@@ -12,7 +12,33 @@ tasks:
   test:
     desc: 日本語のテストを実行する
     cmds:
-      - node --test tests/regression.test.cjs tests/app.test.cjs
+      - node --test tests/*.test.cjs
+
+  setup:browser:
+    desc: ブラウザテストの依存パッケージとChromiumを準備する
+    cmds:
+      - npm ci
+      - npx --no-install playwright install chromium
+
+  test:browser:
+    desc: デスクトップとスマートフォンの画面で操作を検証する
+    cmds:
+      - npx --no-install playwright test
+
+  test:all:
+    desc: 単体テストと実ブラウザテストを順番に実行する
+    cmds:
+      - task: test
+      - task: test:browser
+
+  preview:
+    desc: ローカルのサンプルデータでHTMLをプレビューする
+    vars:
+      PORT: '{{default "3000" .PORT}}'
+    env:
+      PREVIEW_PORT: '{{.PORT}}'
+    cmds:
+      - node scripts/preview.cjs
 
   login:
     desc: Googleアカウントでclaspにログインする

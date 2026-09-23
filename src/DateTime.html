@@ -4,10 +4,7 @@ var DateTime = (function() {
   var MINUTE = 60 * 1000;
   function pad(value) { return ('0' + value).slice(-2); }
   function date(millis) {
-    if (typeof millis !== 'number' || !isFinite(millis)) throw new Error('有効な日時を入力してください');
-    var result = new Date(millis);
-    if (!isFinite(result.getTime())) throw new Error('有効な日時を入力してください');
-    return result;
+    return new Date(DateRules.timestamp(millis));
   }
   function formatTime(millis) {
     var d = date(millis);
@@ -35,16 +32,10 @@ var DateTime = (function() {
     return date(date(millis).getTime() + minutes * MINUTE).getTime();
   }
   function roundUp(millis, minutes) {
-    if (!(minutes > 0)) throw new Error('丸める間隔は正の数にしてください');
-    return date(Math.ceil(date(millis).getTime() / (minutes * MINUTE)) * minutes * MINUTE).getTime();
+    return DateRules.roundUp(millis, minutes);
   }
   function validateRange(start, end) {
-    date(start);
-    if (end !== null) {
-      date(end);
-      if (end <= start) throw new Error('終了時刻は開始時刻より後にしてください');
-    }
-    return { start: start, end: end };
+    return DateRules.validateRange(start, end);
   }
   function elapsedMinutes(start, now) {
     return Math.max(0, Math.round((date(now).getTime() - date(start).getTime()) / MINUTE));

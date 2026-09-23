@@ -1,18 +1,56 @@
-// サーバー側の検証はブラウザの検証とは独立して必ず実施する。
-function requireTimestamp_(value) {
-  if (typeof value !== 'number' || !isFinite(value) || !isFinite(new Date(value).getTime())) {
-    throw new Error('有効な開始・終了時刻を入力してください');
+// 本番サーバー・ブラウザ・プレビューで同じ日時ルールを使用する。
+// GoogleサービスやDOMに依存させない。
+function createDateRules_() {
+  function timestamp(value) {
+    if (typeof value !== 'number' || !isFinite(value) || !isFinite(new Date(value).getTime())) {
+      throw new Error('有効な開始・終了時刻を入力してください');
+    }
+    return value;
   }
-  return value;
+  function round(value, minutes, direction) {
+    if (typeof minutes !== 'number' || !isFinite(minutes) || minutes <= 0) {
+      throw new Error('丸める間隔は正の数にしてください');
+    }
+    var interval = minutes * 60000;
+    return timestamp(direction(timestamp(value) / interval) * interval);
+  }
+  function roundDown(value, minutes) { return round(value, minutes, Math.floor); }
+  function roundUp(value, minutes) { return round(value, minutes, Math.ceil); }
+  function validateRange(start, end) {
+    timestamp(start);
+    if (end !== null) {
+      timestamp(end);
+      if (end <= start) throw new Error('終了時刻は開始時刻より後にしてください');
+    }
+    return { start: start, end: end };
+  }
+  function editRange(start, end, existingEnd) {
+    timestamp(start);
+    var keepEnd = end === null || end === undefined;
+    end = timestamp(keepEnd ? existingEnd : end);
+    if (keepEnd && end <= start) end = timestamp(start + 60000);
+    return validateRange(start, end);
+  }
+  function closeEnd(start, end, explicit) {
+    timestamp(start);
+    timestamp(end);
+    if (explicit) return validateRange(start, end).end;
+    return end > start ? end : timestamp(start + 60000);
+  }
+  return { timestamp: timestamp, roundDown: roundDown, roundUp: roundUp,
+    validateRange: validateRange, editRange: editRange, closeEnd: closeEnd };
 }
 
+var DateRules = createDateRules_();
+
+// ブラウザで検証していても、サーバー側でも必ず検証する。
+function requireTimestamp_(value) { return DateRules.timestamp(value); }
+
 function validateEventRange_(startMillis, endMillis, existingEndMillis) {
-  var start = requireTimestamp_(startMillis);
-  var keepEnd = endMillis === null || endMillis === undefined;
-  var end = requireTimestamp_(keepEnd ? existingEndMillis : endMillis);
-  if (end <= start) {
-    if (!keepEnd) throw new Error('終了時刻は開始時刻より後にしてください');
-    end = requireTimestamp_(start + 60 * 1000);
-  }
-  return { start: start, end: end };
+  return DateRules.editRange(startMillis, endMillis, existingEndMillis);
+}
+
+// 同じファクトリー関数を配信し、クライアント用のコピーを作らない。
+function includeDateRules_() {
+  return '<script>var DateRules = (' + createDateRules_.toString() + ')();</script>';
 }

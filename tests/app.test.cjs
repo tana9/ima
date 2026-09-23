@@ -209,7 +209,12 @@ test('編集中の記録を削除すると編集状態を解除し、画面全�
 test('テンプレートは全クライアントモジュールを順に読み込み、ビルドなしで構文解析できる', () => {
   const includes = [...source('Index.html').matchAll(/<\?!= include_\('([^']+)'\); \?>/g)].map(match => match[1]);
   assert.deepEqual(includes, ['Styles', 'DateTime', 'Api', 'State', 'App']);
-  const rendered = source('Index.html').replace(/<\?!= include_\('([^']+)'\); \?>/g, (_, name) => source(name + '.html'));
+  const rules = vm.createContext({});
+  vm.runInContext(source('DateValidation.gs'), rules);
+  const rendered = source('Index.html').replace(/<\?!= include_\('([^']+)'\); \?>/g, (_, name) => source(name + '.html'))
+    .replace('<?!= includeDateRules_(); ?>', rules.includeDateRules_())
+    .replace('<?= manifestUrl ?>', '/manifest');
+  assert.doesNotMatch(rendered, /<\?/);
   for (const match of rendered.matchAll(/<script>([\s\S]*?)<\/script>/g)) {
     assert.doesNotThrow(() => new vm.Script(match[1]));
   }

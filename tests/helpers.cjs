@@ -67,6 +67,7 @@ function client(now = new Date(2026, 8, 23, 12).getTime()) {
     google: { script: { run: runner() } },
     setTimeout: () => 1, clearTimeout() {}, setInterval: () => 1, clearInterval() {}
   });
+  vm.runInContext(source('DateValidation.gs'), context);
   for (const name of ['DateTime', 'Api', 'State', 'App']) {
     vm.runInContext(script(name + '.html').replace(/\binit\(\);\s*$/, ''), context, { filename: name });
   }

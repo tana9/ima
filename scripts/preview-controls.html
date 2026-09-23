@@ -1,0 +1,61 @@
+<aside class="card preview-controls" aria-label="プレビュー設定">
+  <strong>ローカルプレビュー</strong>
+  <p>サンプルデータで操作できます。状態の切り替え・再読み込みで初期化します。</p>
+  <nav aria-label="表示状態">
+    <a href="?scenario=active" data-scenario="active">進行中</a>
+    <a href="?scenario=empty" data-scenario="empty">記録なし</a>
+    <a href="?scenario=long" data-scenario="long">長いタイトル</a>
+    <a href="?scenario=error" data-scenario="error">通信エラー</a>
+  </nav>
+  <p><a href="#" id="previewReloadToggle" role="button">自動更新を一時停止</a></p>
+  <small id="previewReloadStatus" role="status">保存時に自動更新します</small>
+</aside>
+<style>
+  .preview-controls { font-size: 13px; }
+  .preview-controls p { margin: 8px 0; }
+  .preview-controls nav { display: flex; flex-wrap: wrap; gap: 8px 16px; }
+  .preview-controls a { color: var(--accent); }
+  .preview-controls a[aria-current="page"] { font-weight: bold; text-decoration-thickness: 3px; }
+</style>
+<script>
+(function() {
+  var scenario = new URLSearchParams(location.search).get('scenario') || 'active';
+  document.querySelectorAll('[data-scenario]').forEach(function(link) {
+    if (link.dataset.scenario === scenario) link.setAttribute('aria-current', 'page');
+  });
+  var revision = document.querySelector('meta[name="preview-revision"]').content;
+  var paused = sessionStorage.getItem('preview-paused') === 'true';
+  var toggle = document.getElementById('previewReloadToggle');
+  var status = document.getElementById('previewReloadStatus');
+  function display() {
+    toggle.textContent = paused ? '自動更新を再開' : '自動更新を一時停止';
+    toggle.setAttribute('aria-pressed', String(paused));
+    status.textContent = paused ? '自動更新を一時停止しています' : '保存時に自動更新します';
+  }
+  toggle.addEventListener('click', function(event) {
+    event.preventDefault();
+    paused = !paused;
+    sessionStorage.setItem('preview-paused', String(paused));
+    display();
+  });
+  display();
+  async function poll() {
+    try {
+      if (!paused) {
+        var response = await fetch('/__preview/revision', { cache: 'no-store' });
+        if (!response.ok) throw new Error('接続できません');
+        var current = await response.json();
+        if (!paused && current.revision !== revision) {
+          location.reload();
+          return;
+        }
+        if (!paused) display();
+      }
+    } catch (_) {
+      if (!paused) status.textContent = 'プレビューサーバーへの再接続を待っています';
+    }
+    setTimeout(poll, 800);
+  }
+  setTimeout(poll, 800);
+})();
+</script>

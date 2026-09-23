@@ -4,11 +4,38 @@ var CURRENT_EVENT_ID_KEY = 'CURRENT_EVENT_ID';
 var TENTATIVE_MINUTES = 5; // 進行中イベントに一時的に設定しておく長さ(次の操作で実際の終了時刻に上書きされる)
 var IMA_CALENDAR_NAME = 'ima';
 
-// 「ima」という名前の専用カレンダーを取得し、なければ作成する
+var IMA_FOLDER_NAME = 'ima';
+var IMA_FOLDER_ID_KEY = 'IMA_FOLDER_ID';
+
+var cachedCalendar_ = null;
+var cachedFolder_ = null;
+
+// 「ima」という名前の専用カレンダーを取得し、なければ作成する(1回のリクエスト内ではキャッシュする)
 function getImaCalendar_() {
+  if (cachedCalendar_) return cachedCalendar_;
   var calendars = CalendarApp.getCalendarsByName(IMA_CALENDAR_NAME);
-  if (calendars.length > 0) return calendars[0];
-  return CalendarApp.createCalendar(IMA_CALENDAR_NAME);
+  cachedCalendar_ = calendars.length > 0 ? calendars[0] : CalendarApp.createCalendar(IMA_CALENDAR_NAME);
+  return cachedCalendar_;
+}
+
+// 添付画像の保存先「ima」フォルダを取得し、なければ作成する。
+// drive.file スコープでは名前検索(getFoldersByName)ができないため、
+// 作成したフォルダの ID を保存しておき、次回以降はその ID から取得する。
+function getImaFolder_() {
+  if (cachedFolder_) return cachedFolder_;
+  var props = PropertiesService.getUserProperties();
+  var folderId = props.getProperty(IMA_FOLDER_ID_KEY);
+  if (folderId) {
+    try {
+      cachedFolder_ = DriveApp.getFolderById(folderId);
+      return cachedFolder_;
+    } catch (e) {
+      // 保存されていたフォルダが見つからない場合は作り直す
+    }
+  }
+  cachedFolder_ = DriveApp.createFolder(IMA_FOLDER_NAME);
+  props.setProperty(IMA_FOLDER_ID_KEY, cachedFolder_.getId());
+  return cachedFolder_;
 }
 
 function doGet() {
@@ -33,6 +60,7 @@ function getCurrentStatus() {
     active: true,
     title: event.getTitle(),
     location: event.getLocation(),
+    description: event.getDescription(),
     startTime: event.getStartTime().getTime()
   };
 }
@@ -55,20 +83,23 @@ function closeCurrentEvent_(endTime) {
 }
 
 // 「今これをやっている」を開始する。前に進行中のタスクがあれば、そこで自動的に終了させる。
-function startActivity(title, location) {
+function startActivity(title, location, description) {
   title = (title || '').trim();
   location = (location || '').trim();
+  description = (description || '').trim();
   if (!title) throw new Error('内容を入力してください');
 
   var now = new Date();
   closeCurrentEvent_(now);
 
   var tentativeEnd = new Date(now.getTime() + TENTATIVE_MINUTES * 60 * 1000);
-  var options = location ? { location: location } : {};
+  var options = {};
+  if (location) options.location = location;
+  if (description) options.description = description;
   var event = getImaCalendar_().createEvent(title, now, tentativeEnd, options);
 
   PropertiesService.getUserProperties().setProperty(CURRENT_EVENT_ID_KEY, event.getId());
-  return { active: true, title: title, location: location, startTime: now.getTime() };
+  return { active: true, title: title, location: location, description: description, startTime: now.getTime(), eventId: event.getId() };
 }
 
 // 進行中のタスクを終了する。endTimeMillis を省略した場合は今の時刻で終了する。
@@ -84,7 +115,7 @@ function finishActivity(endTimeMillis) {
 function getRecentTitles(limit) {
   limit = limit || 8;
   var now = new Date();
-  var since = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  var since = new Date(now.getTime() - 14 * 24 * 60 * 60 * 1000);
   var events = getImaCalendar_().getEvents(since, now);
 
   var counts = {};
@@ -117,6 +148,7 @@ function getTodayEvents() {
       id: e.getId(),
       title: e.getTitle(),
       location: e.getLocation(),
+      description: e.getDescription(),
       start: e.getStartTime().getTime(),
       end: e.getEndTime().getTime(),
       active: e.getId() === currentId
@@ -124,10 +156,11 @@ function getTodayEvents() {
   });
 }
 
-// 予定の内容・場所・時刻を編集する。進行中の予定は終了時刻を変更できない(endMillis を null にする)。
-function updateEvent(eventId, title, location, startMillis, endMillis) {
+// 予定の内容・場所・説明・時刻を編集する。進行中の予定は終了時刻を変更できない(endMillis を null にする)。
+function updateEvent(eventId, title, location, description, startMillis, endMillis) {
   title = (title || '').trim();
   location = (location || '').trim();
+  description = (description || '').trim();
   if (!title) throw new Error('内容を入力してください');
 
   var event = getImaCalendar_().getEventById(eventId);
@@ -135,6 +168,7 @@ function updateEvent(eventId, title, location, startMillis, endMillis) {
 
   event.setTitle(title);
   event.setLocation(location);
+  event.setDescription(description);
 
   var start = new Date(startMillis);
   var end = (endMillis === null || endMillis === undefined)
@@ -151,4 +185,42 @@ function updateEvent(eventId, title, location, startMillis, endMillis) {
   event.setTime(start, end);
 
   return { updated: true };
+}
+
+// 予定を削除する。進行中の予定を削除した場合は進行中状態も解除する。
+function deleteEvent(eventId) {
+  var event = getImaCalendar_().getEventById(eventId);
+  if (!event) throw new Error('予定が見つかりませんでした');
+  event.deleteEvent();
+
+  var props = PropertiesService.getUserProperties();
+  if (props.getProperty(CURRENT_EVENT_ID_KEY) === eventId) {
+    props.deleteProperty(CURRENT_EVENT_ID_KEY);
+  }
+
+  return { deleted: true };
+}
+
+// 画像を Google Drive にアップロードし、指定した予定に添付ファイルとして紐付ける
+function attachImageToEvent(eventId, base64Data, mimeType, filename) {
+  if (!eventId) throw new Error('予定が指定されていません');
+  if (!base64Data) throw new Error('画像データがありません');
+
+  var bytes = Utilities.base64Decode(base64Data);
+  var blob = Utilities.newBlob(bytes, mimeType, filename || 'image');
+  var file = getImaFolder_().createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+
+  var calendarId = getImaCalendar_().getId();
+  var apiEventId = eventId.replace(/@.*$/, '');
+  var event = Calendar.Events.get(calendarId, apiEventId);
+  event.attachments = (event.attachments || []).concat([{
+    fileUrl: file.getUrl(),
+    title: filename || file.getName(),
+    mimeType: mimeType
+  }]);
+
+  Calendar.Events.patch(event, calendarId, apiEventId, { supportsAttachments: true });
+
+  return { attached: true, url: file.getUrl() };
 }

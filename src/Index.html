@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html>
+<html lang="ja">
 <head>
   <base target="_top">
   <meta charset="utf-8">
@@ -139,7 +139,7 @@
       margin: 12px 0 6px;
     }
     label.field-label:first-of-type { margin-top: 0; }
-    input[type="text"], input[type="time"] {
+    input[type="text"], input[type="time"], select, textarea {
       width: 100%;
       padding: 12px;
       font-size: 16px;
@@ -149,7 +149,48 @@
       color: var(--text);
       transition: border-color 0.15s ease;
     }
-    input[type="text"]:focus, input[type="time"]:focus {
+    textarea {
+      font-family: inherit;
+      resize: vertical;
+      min-height: 64px;
+      margin-bottom: 12px;
+    }
+    input[type="file"] {
+      width: 100%;
+      font-size: 13px;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+    }
+    input[type="file"]::file-selector-button,
+    input[type="file"]::-webkit-file-upload-button {
+      background: var(--btn-secondary-bg);
+      color: var(--text);
+      border: none;
+      border-radius: 8px;
+      padding: 8px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      cursor: pointer;
+      margin-right: 10px;
+      transition: opacity 0.15s ease;
+    }
+    @media (hover: hover) {
+      input[type="file"]::file-selector-button:hover,
+      input[type="file"]::-webkit-file-upload-button:hover {
+        opacity: 0.8;
+      }
+    }
+    select {
+      margin-bottom: 12px;
+      -webkit-appearance: none;
+      appearance: none;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%236e6e73' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 12px center;
+      background-size: 18px;
+      padding-right: 36px;
+    }
+    input[type="text"]:focus, input[type="time"]:focus, select:focus, textarea:focus {
       outline: none;
       border-color: var(--accent);
     }
@@ -166,6 +207,13 @@
     button:active {
       transform: scale(0.97);
       opacity: 0.85;
+    }
+    button:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+    button:disabled:active {
+      transform: none;
     }
     .btn-primary {
       background: var(--accent);
@@ -188,6 +236,57 @@
     }
     .finish-row button {
       flex: 1 1 auto;
+    }
+    .icon-btn {
+      width: auto;
+      flex: 0 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0 14px;
+    }
+    .btn-with-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+    .icon-btn.negative {
+      background: var(--accent);
+      color: var(--accent-text);
+    }
+    details.more-options {
+      margin-top: 12px;
+      margin-bottom: 12px;
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 0 12px;
+    }
+    details.more-options summary {
+      cursor: pointer;
+      font-size: 13px;
+      color: var(--text-muted);
+      padding: 10px 0;
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    details.more-options summary::-webkit-details-marker { display: none; }
+    details.more-options summary::before {
+      content: '▸';
+      font-size: 11px;
+      transition: transform 0.15s ease;
+    }
+    details.more-options[open] summary::before {
+      transform: rotate(90deg);
+    }
+    details.more-options .more-options-body {
+      padding-bottom: 4px;
+    }
+    details.more-options .more-options-body input,
+    details.more-options .more-options-body textarea {
+      margin-bottom: 10px;
     }
     .quick-list {
       display: flex;
@@ -277,6 +376,39 @@
       background: var(--error);
       color: #fff;
     }
+    .confirm-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.45);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 1000;
+      padding: 16px;
+    }
+    .confirm-box {
+      background: var(--card-bg);
+      border-radius: 16px;
+      padding: 20px;
+      max-width: 360px;
+      width: 100%;
+      box-shadow: 0 8px 32px var(--shadow);
+    }
+    .confirm-message {
+      font-size: 15px;
+      color: var(--text);
+      margin-bottom: 20px;
+      line-height: 1.5;
+      white-space: pre-wrap;
+    }
+    .confirm-actions {
+      display: flex;
+      gap: 8px;
+    }
+    .confirm-actions button {
+      flex: 1 1 auto;
+      width: auto;
+    }
   </style>
 </head>
 <body>
@@ -291,22 +423,56 @@
 
   <div class="card">
     <h2>今すぐ開始(前のタスクは自動で終了します)</h2>
-    <div class="quick-list" id="quickList"><span class="empty-hint">読み込み中...</span></div>
+    <label class="field-label" for="quickSelect">過去にやったこと</label>
+    <select id="quickSelect" onchange="applyQuickSelect()">
+      <option value="">選択してください</option>
+    </select>
     <label class="field-label" for="titleInput">今やっていること</label>
     <input type="text" id="titleInput" placeholder="例: 資料作成">
-    <label class="field-label" for="locationInput">場所(任意)</label>
-    <input type="text" id="locationInput" placeholder="例: 自宅、カフェ">
-    <button class="btn-primary" onclick="handleStart()">開始する</button>
-    <label class="field-label">終了する</label>
+
+    <details class="more-options">
+      <summary>場所・説明・画像を追加</summary>
+      <div class="more-options-body">
+        <label class="field-label" for="locationInput">場所(任意)</label>
+        <input type="text" id="locationInput" placeholder="例: 自宅、カフェ">
+        <label class="field-label" for="descriptionInput">説明(任意)</label>
+        <textarea id="descriptionInput" placeholder="メモ・詳細"></textarea>
+        <button type="button" class="btn-secondary btn-with-icon" onclick="fillCurrentLocation()" style="margin-bottom:12px;">
+          <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/></svg>
+          現在地を説明に追加
+        </button>
+        <label class="field-label" for="imageInput">画像を添付(任意・5MBまで)</label>
+        <input type="file" id="imageInput" accept="image/*">
+        <div class="empty-hint" style="margin-bottom:12px;">添付するとリンクを知っている人は誰でも閲覧できる状態でDriveに保存されます</div>
+      </div>
+    </details>
+
+    <div class="empty-hint" id="duplicateHint" style="display:none; margin-bottom:8px;">すでに同じ内容で実行中です</div>
+    <button class="btn-primary btn-with-icon" id="startBtn" onclick="handleStart()" disabled>
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="currentColor"><polygon points="6,4 20,12 6,20"/></svg>
+      開始する
+    </button>
+  </div>
+
+  <div class="card" id="finishCard" style="display:none;">
+    <h2>終了する</h2>
     <div class="quick-list">
-      <button class="btn-secondary" style="width:auto; flex:1 1 auto;" onclick="finishWithOffset(5)">+5分</button>
-      <button class="btn-secondary" style="width:auto; flex:1 1 auto;" onclick="finishWithOffset(30)">+30分</button>
-      <button class="btn-secondary" style="width:auto; flex:1 1 auto;" onclick="finishWithOffset(60)">+60分</button>
+      <button class="btn-secondary icon-btn" id="signToggleBtn" onclick="toggleOffsetSign()" aria-label="符号切り替え">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+      </button>
+      <button class="btn-secondary offset-btn" style="width:auto; flex:1 1 auto;" data-min="5" onclick="finishWithOffset(5)">+5分</button>
+      <button class="btn-secondary offset-btn" style="width:auto; flex:1 1 auto;" data-min="30" onclick="finishWithOffset(30)">+30分</button>
+      <button class="btn-secondary offset-btn" style="width:auto; flex:1 1 auto;" data-min="60" onclick="finishWithOffset(60)">+60分</button>
     </div>
     <div class="finish-row">
       <input type="time" id="finishTimeInput" aria-label="終了時刻を直接指定(過去の時刻も指定可)">
-      <button class="btn-secondary" style="width:auto; flex:0 0 auto; padding:13px 14px;" onclick="setFinishTimeToNow()">今</button>
-      <button class="btn-secondary" onclick="handleFinish()">指定時刻で終了</button>
+      <button class="btn-secondary icon-btn" onclick="setFinishTimeToNow()" aria-label="現在時刻を入力">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><polyline points="12 7 12 12 15 15"/></svg>
+      </button>
+      <button class="btn-secondary btn-with-icon" onclick="handleFinish()">
+        <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><rect x="6" y="6" width="12" height="12"/></svg>
+        指定時刻で終了
+      </button>
     </div>
   </div>
 
@@ -317,15 +483,47 @@
 
   <div id="toast"></div>
 
+  <div id="confirmOverlay" class="confirm-overlay" style="display:none;">
+    <div class="confirm-box">
+      <div id="confirmMessage" class="confirm-message"></div>
+      <div class="confirm-actions">
+        <button type="button" class="btn-secondary" id="confirmCancelBtn">キャンセル</button>
+        <button type="button" class="btn-primary" id="confirmOkBtn" style="margin-top:0;">OK</button>
+      </div>
+    </div>
+  </div>
+
 <script>
   var statusTimer = null;
   var lastStartTime = null;
+  var currentActivityTitle = null;
   var toastTimer = null;
 
   function init() {
     refreshQuickList();
     refreshStatus();
     refreshTodayEvents();
+    document.getElementById('titleInput').addEventListener('input', updateStartButtonState);
+    document.getElementById('titleInput').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter' && !e.isComposing) {
+        e.preventDefault();
+        handleStart();
+      }
+    });
+    updateStartButtonState();
+    document.getElementById('signToggleBtn').innerHTML = ICON_CIRCLE_PLUS;
+  }
+
+  function updateStartButtonState() {
+    var title = document.getElementById('titleInput').value.trim();
+    var isSameAsCurrent = !!currentActivityTitle && title === currentActivityTitle;
+    document.getElementById('startBtn').disabled = !title || isSameAsCurrent;
+    showDuplicateHint(isSameAsCurrent);
+  }
+
+  function showDuplicateHint(show) {
+    var hint = document.getElementById('duplicateHint');
+    if (hint) hint.style.display = show ? '' : 'none';
   }
 
   function refreshTodayEvents() {
@@ -387,6 +585,11 @@
       '<input type="text" class="edit-title">' +
       '<label class="field-label">場所(任意)</label>' +
       '<input type="text" class="edit-location">' +
+      '<label class="field-label">説明(任意)</label>' +
+      '<textarea class="edit-description"></textarea>' +
+      '<label class="field-label">画像を添付(任意・5MBまで)</label>' +
+      '<input type="file" class="edit-image" accept="image/*">' +
+      '<div class="empty-hint" style="margin-bottom:12px;">添付するとリンクを知っている人は誰でも閲覧できる状態でDriveに保存されます</div>' +
       '<label class="field-label">開始</label>' +
       '<input type="time" class="edit-start">' +
       (ev.active
@@ -395,10 +598,12 @@
       '<div class="finish-row">' +
         '<button class="btn-secondary edit-cancel">キャンセル</button>' +
         '<button class="btn-primary edit-save" style="margin-top:0;">保存</button>' +
-      '</div>';
+      '</div>' +
+      '<button class="btn-secondary edit-delete" style="margin-top:8px; color: var(--error);">この予定を削除</button>';
 
     wrap.querySelector('.edit-title').value = ev.title;
     wrap.querySelector('.edit-location').value = ev.location || '';
+    wrap.querySelector('.edit-description').value = ev.description || '';
     wrap.querySelector('.edit-start').value = formatTime(ev.start);
     var endInput = wrap.querySelector('.edit-end');
     if (endInput) endInput.value = formatTime(ev.end);
@@ -411,6 +616,7 @@
     wrap.querySelector('.edit-save').addEventListener('click', function() {
       var title = wrap.querySelector('.edit-title').value.trim();
       var location = wrap.querySelector('.edit-location').value.trim();
+      var description = wrap.querySelector('.edit-description').value.trim();
       var startVal = wrap.querySelector('.edit-start').value;
       var endVal = endInput ? endInput.value : null;
 
@@ -427,9 +633,24 @@
           refreshTodayEvents();
           refreshStatus();
           refreshQuickList();
+          attachSelectedImage(ev.id, wrap.querySelector('.edit-image'));
         })
         .withFailureHandler(function(err) { showMessage(err.message, true); })
-        .updateEvent(ev.id, title, location, startMillis, endMillis);
+        .updateEvent(ev.id, title, location, description, startMillis, endMillis);
+    });
+
+    wrap.querySelector('.edit-delete').addEventListener('click', async function() {
+      if (!(await showConfirm('「' + ev.title + '」を削除しますか?この操作は取り消せません。'))) return;
+      google.script.run
+        .withSuccessHandler(function() {
+          showMessage('削除しました');
+          editingEventId = null;
+          refreshTodayEvents();
+          refreshStatus();
+          refreshQuickList();
+        })
+        .withFailureHandler(function(err) { showMessage(err.message, true); })
+        .deleteEvent(ev.id);
     });
 
     return wrap;
@@ -440,20 +661,23 @@
   }
 
   function renderQuickList(titles) {
-    var list = document.getElementById('quickList');
-    list.innerHTML = '';
-    if (!titles || titles.length === 0) {
-      list.innerHTML = '<span class="empty-hint">まだ記録がありません。下の入力欄から始めてください。</span>';
-      return;
-    }
-    titles.forEach(function(label) {
-      var b = document.createElement('button');
-      b.textContent = label;
-      b.onclick = function() {
-        startActivityWith(label, document.getElementById('locationInput').value.trim());
-      };
-      list.appendChild(b);
+    var select = document.getElementById('quickSelect');
+    select.innerHTML = '<option value="">選択してください</option>';
+    (titles || []).forEach(function(label) {
+      var opt = document.createElement('option');
+      opt.value = label;
+      opt.textContent = label;
+      select.appendChild(opt);
     });
+  }
+
+  function applyQuickSelect() {
+    var select = document.getElementById('quickSelect');
+    if (select.value) {
+      document.getElementById('titleInput').value = select.value;
+    }
+    select.value = '';
+    updateStartButtonState();
   }
 
   function showMessage(text, isError) {
@@ -464,6 +688,38 @@
     toastTimer = setTimeout(function() { el.className = el.className.replace('show', ''); }, 2600);
   }
 
+  function showConfirm(message) {
+    return new Promise(function(resolve) {
+      var overlay = document.getElementById('confirmOverlay');
+      var msgEl = document.getElementById('confirmMessage');
+      var okBtn = document.getElementById('confirmOkBtn');
+      var cancelBtn = document.getElementById('confirmCancelBtn');
+      var previousFocus = document.activeElement;
+      msgEl.textContent = message;
+      overlay.style.display = 'flex';
+      okBtn.focus();
+
+      function cleanup(result) {
+        overlay.style.display = 'none';
+        okBtn.removeEventListener('click', onOk);
+        cancelBtn.removeEventListener('click', onCancel);
+        overlay.removeEventListener('click', onOverlayClick);
+        document.removeEventListener('keydown', onKeydown);
+        if (previousFocus && previousFocus.focus) previousFocus.focus();
+        resolve(result);
+      }
+      function onOk() { cleanup(true); }
+      function onCancel() { cleanup(false); }
+      function onOverlayClick(e) { if (e.target === overlay) cleanup(false); }
+      function onKeydown(e) { if (e.key === 'Escape') cleanup(false); }
+
+      okBtn.addEventListener('click', onOk);
+      cancelBtn.addEventListener('click', onCancel);
+      overlay.addEventListener('click', onOverlayClick);
+      document.addEventListener('keydown', onKeydown);
+    });
+  }
+
   function refreshStatus() {
     google.script.run.withSuccessHandler(renderStatus).getCurrentStatus();
   }
@@ -471,11 +727,14 @@
   function renderStatus(status) {
     var el = document.getElementById('status');
     var dot = document.getElementById('statusDot');
+    var finishCard = document.getElementById('finishCard');
     clearInterval(statusTimer);
 
     if (status.active) {
       dot.classList.add('active');
+      finishCard.style.display = '';
       lastStartTime = status.startTime;
+      currentActivityTitle = status.title;
       var titleLine = escapeHtml(status.title) +
         (status.location ? ' <span class="elapsed">@ ' + escapeHtml(status.location) + '</span>' : '');
       el.innerHTML = '<span class="doing">' + titleLine + '</span>' +
@@ -484,8 +743,11 @@
       statusTimer = setInterval(updateElapsed, 30000);
     } else {
       dot.classList.remove('active');
+      finishCard.style.display = 'none';
+      currentActivityTitle = null;
       el.innerHTML = '<span class="idle">現在なにも記録していません</span>';
     }
+    updateStartButtonState();
   }
 
   function updateElapsed() {
@@ -502,42 +764,125 @@
   }
 
   function setFinishTimeToNow() {
-    document.getElementById('finishTimeInput').value = formatTime(Date.now());
+    var stepMillis = 5 * 60 * 1000;
+    var rounded = Math.ceil(Date.now() / stepMillis) * stepMillis;
+    document.getElementById('finishTimeInput').value = formatTime(rounded);
   }
 
-  function handleStart() {
+  function fillCurrentLocation() {
+    if (!navigator.geolocation) {
+      showMessage('この端末では位置情報を利用できません', true);
+      return;
+    }
+    showMessage('現在地を取得中...');
+    navigator.geolocation.getCurrentPosition(
+      function(pos) {
+        var lat = pos.coords.latitude.toFixed(6);
+        var lng = pos.coords.longitude.toFixed(6);
+        var url = 'https://maps.google.com/?q=' + lat + ',' + lng;
+        var descInput = document.getElementById('descriptionInput');
+        descInput.value = descInput.value ? descInput.value + '\n' + url : url;
+        showMessage('現在地を説明に追加しました');
+      },
+      function(err) {
+        var msg = '現在地を取得できませんでした';
+        if (err) {
+          if (err.code === 1) msg = '位置情報の利用が許可されていません(ブラウザの設定をご確認ください)';
+          else if (err.code === 2) msg = '現在地を取得できませんでした(電波状況をご確認ください)';
+          else if (err.code === 3) msg = '現在地の取得がタイムアウトしました';
+        }
+        showMessage(msg, true);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
+  }
+
+  async function handleStart() {
     var input = document.getElementById('titleInput');
     var title = input.value.trim();
     if (!title) { showMessage('内容を入力してください', true); return; }
-    startActivityWith(title, document.getElementById('locationInput').value.trim());
+    if (currentActivityTitle && title === currentActivityTitle) {
+      showMessage('すでに同じ内容で実行中です', true);
+      return;
+    }
+    if (!(await showConfirm(title + ' を開始しますか?'))) return;
+    var location = document.getElementById('locationInput').value.trim();
+    var description = document.getElementById('descriptionInput').value.trim();
+    startActivityWith(title, location, description);
     input.value = '';
+    document.getElementById('descriptionInput').value = '';
+    updateStartButtonState();
   }
 
-  function startActivityWith(title, location) {
+  function scrollToStatus() {
+    document.querySelector('.status-card').scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
+
+  function startActivityWith(title, location, description) {
     google.script.run
       .withSuccessHandler(function(res) {
         renderStatus(res);
         showMessage(title + ' を開始しました');
         refreshQuickList();
         refreshTodayEvents();
+        if (res.eventId) attachSelectedImage(res.eventId, document.getElementById('imageInput'));
+        scrollToStatus();
       })
       .withFailureHandler(function(err) { showMessage(err.message, true); })
-      .startActivity(title, location || '');
+      .startActivity(title, location || '', description || '');
+  }
+
+  var MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+  function attachSelectedImage(eventId, fileInput) {
+    var file = fileInput.files && fileInput.files[0];
+    if (!file) return;
+
+    if (file.size > MAX_IMAGE_BYTES) {
+      showMessage('画像が大きすぎます(5MBまで)。添付をスキップしました', true);
+      fileInput.value = '';
+      return;
+    }
+
+    var reader = new FileReader();
+    reader.onload = function() {
+      var base64 = reader.result.split(',')[1];
+      google.script.run
+        .withSuccessHandler(function() {
+          showMessage('画像を添付しました');
+          refreshTodayEvents();
+        })
+        .withFailureHandler(function(err) { showMessage('画像の添付に失敗しました: ' + err.message, true); })
+        .attachImageToEvent(eventId, base64, file.type, file.name);
+    };
+    reader.onerror = function() { showMessage('画像の読み込みに失敗しました', true); };
+    reader.readAsDataURL(file);
+    fileInput.value = '';
+  }
+
+  var offsetSign = 1;
+  var ICON_CIRCLE_PLUS = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
+  var ICON_CIRCLE_MINUS = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="8" y1="12" x2="16" y2="12"/></svg>';
+
+  function toggleOffsetSign() {
+    offsetSign = -offsetSign;
+    var signBtn = document.getElementById('signToggleBtn');
+    signBtn.classList.toggle('negative', offsetSign < 0);
+    signBtn.innerHTML = offsetSign > 0 ? ICON_CIRCLE_PLUS : ICON_CIRCLE_MINUS;
+    var sign = offsetSign > 0 ? '+' : '−';
+    document.querySelectorAll('.offset-btn').forEach(function(btn) {
+      btn.textContent = sign + btn.getAttribute('data-min') + '分';
+    });
   }
 
   function finishWithOffset(minutes) {
-    var endMillis = Date.now() + minutes * 60 * 1000;
-    google.script.run
-      .withSuccessHandler(function(res) {
-        renderStatus(res);
-        showMessage((minutes >= 0 ? '+' : '') + minutes + '分の時刻で終了しました');
-        refreshTodayEvents();
-      })
-      .withFailureHandler(function(err) { showMessage(err.message, true); })
-      .finishActivity(endMillis);
+    minutes = minutes * offsetSign;
+    var input = document.getElementById('finishTimeInput');
+    var baseMillis = input.value ? timeValueToMillis(Date.now(), input.value) : Date.now();
+    input.value = formatTime(baseMillis + minutes * 60 * 1000);
   }
 
-  function handleFinish() {
+  async function handleFinish() {
     var timeVal = document.getElementById('finishTimeInput').value; // "HH:MM" または空
     var endMillis = null;
     if (timeVal) {
@@ -546,12 +891,14 @@
       var end = new Date(now.getFullYear(), now.getMonth(), now.getDate(), Number(parts[0]), Number(parts[1]));
       endMillis = end.getTime();
     }
+    if (!(await showConfirm(timeVal ? timeVal + ' に終了しますか?' : '今の時刻で終了しますか?'))) return;
     google.script.run
       .withSuccessHandler(function(res) {
         renderStatus(res);
         showMessage('終了しました');
         document.getElementById('finishTimeInput').value = '';
         refreshTodayEvents();
+        scrollToStatus();
       })
       .withFailureHandler(function(err) { showMessage(err.message, true); })
       .finishActivity(endMillis);

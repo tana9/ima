@@ -114,6 +114,7 @@ function getTodayEvents() {
 
   return events.map(function(e) {
     return {
+      id: e.getId(),
       title: e.getTitle(),
       location: e.getLocation(),
       start: e.getStartTime().getTime(),
@@ -121,4 +122,33 @@ function getTodayEvents() {
       active: e.getId() === currentId
     };
   });
+}
+
+// 予定の内容・場所・時刻を編集する。進行中の予定は終了時刻を変更できない(endMillis を null にする)。
+function updateEvent(eventId, title, location, startMillis, endMillis) {
+  title = (title || '').trim();
+  location = (location || '').trim();
+  if (!title) throw new Error('内容を入力してください');
+
+  var event = getImaCalendar_().getEventById(eventId);
+  if (!event) throw new Error('予定が見つかりませんでした');
+
+  event.setTitle(title);
+  event.setLocation(location);
+
+  var start = new Date(startMillis);
+  var end = (endMillis === null || endMillis === undefined)
+    ? event.getEndTime()
+    : new Date(endMillis);
+
+  if (end.getTime() <= start.getTime()) {
+    if (endMillis === null || endMillis === undefined) {
+      end = new Date(start.getTime() + 60 * 1000);
+    } else {
+      throw new Error('終了時刻は開始時刻より後にしてください');
+    }
+  }
+  event.setTime(start, end);
+
+  return { updated: true };
 }

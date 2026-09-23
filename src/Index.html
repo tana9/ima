@@ -221,8 +221,18 @@
       padding: 9px 0;
       border-bottom: 1px solid var(--border);
       font-size: 14px;
+      cursor: pointer;
     }
     .today-item:last-child { border-bottom: none; }
+    @media (hover: hover) {
+      .today-item:hover { opacity: 0.7; }
+    }
+    .today-edit {
+      padding: 4px 0 14px;
+      border-bottom: 1px solid var(--border);
+    }
+    .today-edit input { margin-bottom: 8px; }
+    .today-edit .finish-row { margin-top: 4px; }
     .today-time {
       color: var(--text-muted);
       font-size: 12px;
@@ -321,19 +331,29 @@
     google.script.run.withSuccessHandler(renderTodayEvents).getTodayEvents();
   }
 
+  var todayEventsCache = [];
+  var editingEventId = null;
+
   function formatTime(millis) {
     var d = new Date(millis);
     return ('0' + d.getHours()).slice(-2) + ':' + ('0' + d.getMinutes()).slice(-2);
   }
 
+  function timeValueToMillis(baseMillis, timeVal) {
+    var base = new Date(baseMillis);
+    var parts = timeVal.split(':');
+    return new Date(base.getFullYear(), base.getMonth(), base.getDate(), Number(parts[0]), Number(parts[1])).getTime();
+  }
+
   function renderTodayEvents(events) {
+    todayEventsCache = events || [];
     var el = document.getElementById('todayList');
     el.innerHTML = '';
-    if (!events || events.length === 0) {
+    if (!todayEventsCache.length) {
       el.innerHTML = '<span class="empty-hint">まだ今日の記録がありません。</span>';
       return;
     }
-    events.forEach(function(ev) {
+    todayEventsCache.forEach(function(ev) {
       var row = document.createElement('div');
       row.className = 'today-item' + (ev.active ? ' active' : '');
       var timeRange = formatTime(ev.start) + '〜' + (ev.active ? '進行中' : formatTime(ev.end));
@@ -342,8 +362,76 @@
       row.innerHTML =
         '<span class="today-time">' + timeRange + '</span>' +
         '<span class="today-title">' + titleHtml + '</span>';
+      row.addEventListener('click', function() { toggleEdit(ev.id); });
       el.appendChild(row);
+
+      if (editingEventId === ev.id) {
+        el.appendChild(buildEditForm(ev));
+      }
     });
+  }
+
+  function toggleEdit(id) {
+    editingEventId = (editingEventId === id) ? null : id;
+    renderTodayEvents(todayEventsCache);
+  }
+
+  function buildEditForm(ev) {
+    var wrap = document.createElement('div');
+    wrap.className = 'today-edit';
+    wrap.addEventListener('click', function(e) { e.stopPropagation(); });
+
+    wrap.innerHTML =
+      '<label class="field-label">内容</label>' +
+      '<input type="text" class="edit-title">' +
+      '<label class="field-label">場所(任意)</label>' +
+      '<input type="text" class="edit-location">' +
+      '<label class="field-label">開始</label>' +
+      '<input type="time" class="edit-start">' +
+      (ev.active
+        ? '<div class="empty-hint">進行中のため終了時刻はここでは変更できません(上の「終了する」から設定してください)</div>'
+        : '<label class="field-label">終了</label><input type="time" class="edit-end">') +
+      '<div class="finish-row">' +
+        '<button class="btn-secondary edit-cancel">キャンセル</button>' +
+        '<button class="btn-primary edit-save" style="margin-top:0;">保存</button>' +
+      '</div>';
+
+    wrap.querySelector('.edit-title').value = ev.title;
+    wrap.querySelector('.edit-location').value = ev.location || '';
+    wrap.querySelector('.edit-start').value = formatTime(ev.start);
+    var endInput = wrap.querySelector('.edit-end');
+    if (endInput) endInput.value = formatTime(ev.end);
+
+    wrap.querySelector('.edit-cancel').addEventListener('click', function() {
+      editingEventId = null;
+      renderTodayEvents(todayEventsCache);
+    });
+
+    wrap.querySelector('.edit-save').addEventListener('click', function() {
+      var title = wrap.querySelector('.edit-title').value.trim();
+      var location = wrap.querySelector('.edit-location').value.trim();
+      var startVal = wrap.querySelector('.edit-start').value;
+      var endVal = endInput ? endInput.value : null;
+
+      if (!title) { showMessage('内容を入力してください', true); return; }
+      if (!startVal) { showMessage('開始時刻を入力してください', true); return; }
+
+      var startMillis = timeValueToMillis(ev.start, startVal);
+      var endMillis = endVal ? timeValueToMillis(ev.end, endVal) : null;
+
+      google.script.run
+        .withSuccessHandler(function() {
+          showMessage('更新しました');
+          editingEventId = null;
+          refreshTodayEvents();
+          refreshStatus();
+          refreshQuickList();
+        })
+        .withFailureHandler(function(err) { showMessage(err.message, true); })
+        .updateEvent(ev.id, title, location, startMillis, endMillis);
+    });
+
+    return wrap;
   }
 
   function refreshQuickList() {

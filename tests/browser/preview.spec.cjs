@@ -27,7 +27,7 @@ test('空の一覧から開始・編集・終了・削除を画面で操作で�
   await expect(page.locator('.today-title')).toHaveText('編集した作業');
   await expect(page.locator('#status')).toContainText('編集した作業');
 
-  await page.getByRole('button', { name: '指定時刻で終了' }).click();
+  await page.getByRole('button', { name: 'この時刻で終了' }).click();
   await expect(page.getByRole('dialog')).toContainText('5分単位で切り上げ');
   await page.getByRole('button', { name: 'OK', exact: true }).click();
   await expect(page.locator('#status')).toHaveText('現在なにも記録していません');
@@ -60,7 +60,7 @@ test('表示状態を切り替え、通信エラーから再試行で復旧で�
 test('不正な終了日時は確認を表示せず入力を保持する', async ({ page }) => {
   await page.goto('/');
   await page.locator('#finishTimeInput').fill('2026-09-23T09:00');
-  await page.getByRole('button', { name: '指定時刻で終了' }).click();
+  await page.getByRole('button', { name: 'この時刻で終了' }).click();
   await expect(page.locator('#errorMessage')).toContainText('終了時刻は開始時刻より後');
   await expect(page.getByRole('dialog')).toBeHidden();
   await expect(page.locator('#finishTimeInput')).toHaveValue('2026-09-23T09:00');
@@ -71,7 +71,7 @@ test('終了欄の現在時刻ボタンは日時入力と同じ高さで横並�
   await page.goto('/');
   const input = page.locator('#finishTimeInput');
   const nowButton = page.getByRole('button', { name: '現在時刻を入力' });
-  const finishButton = page.getByRole('button', { name: '指定時刻で終了' });
+  const finishButton = page.getByRole('button', { name: 'この時刻で終了' });
   const boxes = await Promise.all([input.boundingBox(), nowButton.boundingBox(), finishButton.boundingBox()]);
   expect(boxes[0].height).toBe(boxes[1].height);
   expect(boxes[1].height).toBeGreaterThanOrEqual(44);
@@ -143,7 +143,7 @@ test('古い画面からの終了を拒否し、エラーを保持したまま�
   await page.evaluate(async () => {
     await callServer('startActivity', '別端末の作業', '', '', appState.status.eventId);
   });
-  await page.getByRole('button', { name: '指定時刻で終了' }).click();
+  await page.getByRole('button', { name: 'この時刻で終了' }).click();
   await page.getByRole('button', { name: 'OK', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('進行中の作業が変更');
   await page.waitForTimeout(2800);

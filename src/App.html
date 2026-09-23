@@ -10,7 +10,22 @@
       }
     });
     document.getElementById('signToggleBtn').innerHTML = ICON_CIRCLE_PLUS;
+    initToastKeyboardAvoidance();
     refreshDashboard();
+  }
+
+  // ソフトウェアキーボード表示時に visual viewport が縮む分だけ、
+  // 通知(トースト)の表示位置を持ち上げてキーボードと重ならないようにする。
+  function initToastKeyboardAvoidance() {
+    if (!window.visualViewport) return;
+    var toast = document.getElementById('toast');
+    function update() {
+      var keyboardHeight = Math.max(0, window.innerHeight - window.visualViewport.height - window.visualViewport.offsetTop);
+      toast.style.bottom = 'calc(16px + env(safe-area-inset-bottom) + ' + keyboardHeight + 'px)';
+    }
+    window.visualViewport.addEventListener('resize', update);
+    window.visualViewport.addEventListener('scroll', update);
+    update();
   }
 
   function updateStartButtonState() {

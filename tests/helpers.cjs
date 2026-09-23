@@ -50,7 +50,7 @@ function client(now = new Date(2026, 8, 23, 12).getTime()) {
       return (...args) => {
         result.calls.push({ method: key, args });
         Promise.resolve().then(() => {
-          if (!handlers[key]) throw new Error('Unexpected API: ' + key);
+          if (!handlers[key]) throw new Error('想定外のAPI: ' + key);
           return handlers[key](...args);
         }).then(success, failure);
       };

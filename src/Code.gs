@@ -117,31 +117,32 @@ function closeCurrentEvent_(endTime, validateEnd) {
   props.deleteProperty(CURRENT_EVENT_ID_KEY);
 }
 
-// 「今これをやっている」を開始する。前に進行中のタスクがあれば、そこで自動的に終了させる。
+// 開始時刻は現在時刻を5分単位で切り捨てる。前のタスクも同じ時刻で自動終了する。
 function startActivity(title, location, description) {
   title = (title || '').trim();
   location = (location || '').trim();
   description = (description || '').trim();
   if (!title) throw new Error('内容を入力してください');
 
-  var now = new Date();
-  closeCurrentEvent_(now);
+  var interval = 5 * 60 * 1000;
+  var start = new Date(Math.floor(Date.now() / interval) * interval);
+  closeCurrentEvent_(start);
 
-  var tentativeEnd = new Date(now.getTime() + TENTATIVE_MINUTES * 60 * 1000);
+  var tentativeEnd = new Date(start.getTime() + TENTATIVE_MINUTES * 60 * 1000);
   var options = {};
   if (location) options.location = location;
   if (description) options.description = description;
-  var event = getImaCalendar_().createEvent(title, now, tentativeEnd, options);
+  var event = getImaCalendar_().createEvent(title, start, tentativeEnd, options);
 
   PropertiesService.getUserProperties().setProperty(CURRENT_EVENT_ID_KEY, event.getId());
-  return { active: true, title: title, location: location, description: description, startTime: now.getTime(), eventId: event.getId() };
+  return { active: true, title: title, location: location, description: description, startTime: start.getTime(), eventId: event.getId() };
 }
 
-// 進行中のタスクを終了する。endTimeMillis を省略した場合は今の時刻で終了する。
+// 進行中のタスクを終了する。endTimeMillis の省略時は現在時刻を5分単位で切り上げる。
 function finishActivity(endTimeMillis) {
   var explicitEnd = endTimeMillis !== null && endTimeMillis !== undefined;
   var endTime = !explicitEnd
-    ? new Date()
+    ? new Date(Math.ceil(Date.now() / 300000) * 300000)
     : new Date(requireTimestamp_(endTimeMillis));
   closeCurrentEvent_(endTime, explicitEnd);
   return { active: false };

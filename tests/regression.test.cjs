@@ -3,7 +3,50 @@ const vm = require('node:vm');
 const { test } = require('node:test');
 const { source, client } = require('./helpers.cjs');
 
-test('positive offsets retain the next date through submission', async () => {
+test('開始時刻は5分単位で切り捨て、前のタスクも同じ時刻で終了する', () => {
+  for (const [now, expected] of [
+    ['2026-09-23T10:01:00+09:00', '2026-09-23T10:00:00+09:00'],
+    ['2026-09-23T10:05:00+09:00', '2026-09-23T10:05:00+09:00'],
+    ['2026-09-23T10:05:00.001+09:00', '2026-09-23T10:05:00+09:00'],
+    ['2026-12-31T23:59:59+09:00', '2026-12-31T23:55:00+09:00']
+  ]) {
+    class FixedDate extends Date {
+      constructor(...args) { super(...(args.length ? args : [Date.parse(now)])); }
+      static now() { return Date.parse(now); }
+    }
+    const context = vm.createContext({ Date: FixedDate });
+    vm.runInContext(source('DateValidation.gs'), context);
+    vm.runInContext(source('Code.gs'), context);
+    let currentId = '前の記録';
+    let previousEnd;
+    let created;
+    context.PropertiesService = { getUserProperties: () => ({
+      getProperty: () => currentId,
+      deleteProperty: () => { currentId = null; },
+      setProperty: (_, value) => { currentId = value; }
+    }) };
+    context.cachedCalendar_ = {
+      getEventById: () => ({
+        getStartTime: () => new Date(Date.parse(now) - 600000),
+        setTime: (_, end) => { previousEnd = end.getTime(); }
+      }),
+      createEvent: (title, start, end, options) => {
+        created = { title, start: start.getTime(), end: end.getTime(), ...options };
+        return { getId: () => '新しい記録' };
+      }
+    };
+    const result = context.startActivity(' 作業 ', ' 事務所 ', ' メモ ');
+    const expectedStart = Date.parse(expected);
+    assert.deepEqual(created, { title: '作業', start: expectedStart,
+      end: expectedStart + 300000, location: '事務所', description: 'メモ' });
+    assert.equal(result.startTime, expectedStart);
+    assert.equal(result.eventId, '新しい記録');
+    assert.equal(previousEnd, expectedStart);
+    assert.equal(currentId, '新しい記録');
+  }
+});
+
+test('時間を加算して翌日になった場合も送信まで日付を保持する', async () => {
   const { context, input, result } = client(new Date(2026, 8, 23, 23, 50).getTime());
   context.finishWithOffset(30);
   assert.equal(input.value, '2026-09-24T00:20');
@@ -13,7 +56,7 @@ test('positive offsets retain the next date through submission', async () => {
   assert.match(result.confirmation, /2026-09-24 01:20/);
 });
 
-test('negative offsets retain the previous date across a year boundary', async () => {
+test('年をまたぐ時間の減算でも前年の日付を保持する', async () => {
   const { context, input, result } = client(new Date(2027, 0, 1, 0, 10).getTime());
   context.appState.offsetSign = -1;
   context.finishWithOffset(30);
@@ -22,7 +65,7 @@ test('negative offsets retain the previous date across a year boundary', async (
   assert.equal(result.end, new Date(2026, 11, 31, 23, 40).getTime());
 });
 
-test('now button retains the next date when rounding past midnight', async () => {
+test('現在時刻ボタンの切り上げで翌日になった場合も日付を保持する', async () => {
   const { context, input, result } = client(new Date(2026, 8, 30, 23, 58).getTime());
   context.setFinishTimeToNow();
   assert.equal(input.value, '2026-10-01T00:00');
@@ -30,7 +73,7 @@ test('now button retains the next date when rounding past midnight', async () =>
   assert.equal(result.end, new Date(2026, 9, 1).getTime());
 });
 
-test('manual dates and empty input are supported', async () => {
+test('終了日時の直接指定と未入力の両方を受け付ける', async () => {
   const { context, input, result } = client(new Date(2026, 8, 23).getTime());
   input.value = '2026-09-22T23:55';
   await context.handleFinish();
@@ -47,36 +90,36 @@ function server() {
   const changes = [];
   context.cachedCalendar_ = { getEventById: () => ({
     getEndTime: () => new Date(5000),
-    setTime: (start, end) => changes.push(['time', start.getTime(), end.getTime()]),
-    setTitle: value => changes.push(['title', value]),
-    setLocation: value => changes.push(['location', value]),
-    setDescription: value => changes.push(['description', value])
+    setTime: (start, end) => changes.push(['日時', start.getTime(), end.getTime()]),
+    setTitle: value => changes.push(['内容', value]),
+    setLocation: value => changes.push(['場所', value]),
+    setDescription: value => changes.push(['説明', value])
   }) };
   return { context, changes };
 }
 
-test('invalid edits leave all event fields unchanged', () => {
-  for (const [start, end] of [[2000, 1000], [2000, 2000], ['invalid', 5000],
-    [1000, 'invalid'], [null, 5000], ['', 5000], [undefined, 5000]]) {
+test('不正な編集では記録の全項目を変更しない', () => {
+  for (const [start, end] of [[2000, 1000], [2000, 2000], ['不正な値', 5000],
+    [1000, '不正な値'], [null, 5000], ['', 5000], [undefined, 5000]]) {
     const { context, changes } = server();
-    assert.throws(() => context.updateEvent('id', 'new', 'new', 'new', start, end));
+    assert.throws(() => context.updateEvent('id', '新しい記録', '新しい記録', '新しい記録', start, end));
     assert.deepEqual(changes, []);
   }
 });
 
-test('valid edits update time and content', () => {
+test('有効な編集では日時と内容を更新する', () => {
   const { context, changes } = server();
-  context.updateEvent('id', ' title ', ' place ', ' description ', 1000, 3000);
+  context.updateEvent('id', ' 内容 ', ' 場所 ', ' 説明 ', 1000, 3000);
   assert.deepEqual(changes, [
-    ['time', 1000, 3000], ['title', 'title'], ['location', 'place'], ['description', 'description']
+    ['日時', 1000, 3000], ['内容', '内容'], ['場所', '場所'], ['説明', '説明']
   ]);
 });
 
-test('active edits preserve the end or extend it beyond the new start', () => {
+test('進行中の編集では終了日時を保持するか、新しい開始日時より後に延長する', () => {
   for (const [start, expectedEnd] of [[1000, 5000], [6000, 66000]]) {
     const { context, changes } = server();
-    context.updateEvent('id', 'title', '', '', start, null);
-    assert.deepEqual(changes[0], ['time', start, expectedEnd]);
+    context.updateEvent('id', '内容', '', '', start, null);
+    assert.deepEqual(changes[0], ['日時', start, expectedEnd]);
   }
 });
 
@@ -94,7 +137,7 @@ function finishServer() {
   return { context, changes, currentId: () => currentId };
 }
 
-test('invalid explicit finish dates do not change the event or clear the active record', () => {
+test('不正な終了日時を指定しても記録を変更せず、進行中の状態を保持する', () => {
   for (const end of [1000, 2000, NaN, Infinity, '3000']) {
     const { context, changes, currentId } = finishServer();
     assert.throws(() => context.finishActivity(end));
@@ -103,14 +146,39 @@ test('invalid explicit finish dates do not change the event or clear the active 
   }
 });
 
-test('valid explicit finish uses the requested date and clears the active record', () => {
+test('有効な終了日時の指定ではその日時で終了し、進行中の状態を解除する', () => {
   const { context, changes, currentId } = finishServer();
   assert.equal(context.finishActivity(3000).active, false);
   assert.deepEqual(changes, [[2000, 3000]]);
   assert.equal(currentId(), null);
 });
 
-test('automatic close still gives a just-started event its minimum duration', () => {
+test('終了時刻の既定値は5分単位で切り上げ、境界時刻と年越しも正しく扱う', () => {
+  for (const [now, expected] of [
+    ['2026-09-23T10:01:00+09:00', '2026-09-23T10:05:00+09:00'],
+    ['2026-09-23T10:05:00+09:00', '2026-09-23T10:05:00+09:00'],
+    ['2026-09-23T10:05:00.001+09:00', '2026-09-23T10:10:00+09:00'],
+    ['2026-12-31T23:59:59+09:00', '2027-01-01T00:00:00+09:00']
+  ]) {
+    for (const value of [null, undefined]) {
+      const { context, changes, currentId } = finishServer();
+      context.Date = class extends Date {
+        static now() { return Date.parse(now); }
+      };
+      context.finishActivity(value);
+      assert.deepEqual(changes, [[2000, Date.parse(expected)]]);
+      assert.equal(currentId(), null);
+    }
+  }
+});
+
+test('未入力からの時間加減算は切り上げた終了時刻の既定値を基準にする', () => {
+  const { context, input } = client(new Date(2026, 11, 31, 23, 58).getTime());
+  context.finishWithOffset(5);
+  assert.equal(input.value, '2027-01-01T00:05');
+});
+
+test('開始直後の記録でも自動終了時は最低限の長さを確保する', () => {
   const { context, changes, currentId } = finishServer();
   context.closeCurrentEvent_(new Date(2000));
   assert.deepEqual(changes, [[2000, 62000]]);

@@ -1,0 +1,57 @@
+version: '3'
+
+vars:
+  CLASP: npx --yes --package=@google/clasp@3 clasp
+
+tasks:
+  default:
+    desc: 利用できる操作を一覧表示する
+    cmds:
+      - task --list
+
+  test:
+    desc: 日本語のテストを実行する
+    cmds:
+      - node --test tests/regression.test.cjs tests/app.test.cjs
+
+  login:
+    desc: Googleアカウントでclaspにログインする
+    cmds:
+      - '{{.CLASP}} login'
+
+  status:
+    desc: Apps Scriptへの反映対象ファイルを確認する
+    cmds:
+      - '{{.CLASP}} show-file-status'
+
+  push:
+    desc: テスト成功後にソースをApps Scriptへ反映する
+    cmds:
+      - task: test
+      - '{{.CLASP}} push'
+
+  deployments:
+    desc: デプロイIDと公開バージョンを一覧表示する
+    cmds:
+      - '{{.CLASP}} list-deployments'
+
+  deploy:
+    desc: テストとソース反映後、指定した既存デプロイを更新する
+    requires:
+      vars: [DEPLOYMENT_ID]
+    env:
+      IMA_DEPLOYMENT_ID: '{{.DEPLOYMENT_ID}}'
+    cmds:
+      - task: push
+      - '{{.CLASP}} update-deployment "$IMA_DEPLOYMENT_ID"'
+
+  deploy:new:
+    desc: テストとソース反映後、新しいデプロイを作成する
+    cmds:
+      - task: push
+      - '{{.CLASP}} create-deployment'
+
+  open:
+    desc: Apps Scriptエディタをブラウザで開く
+    cmds:
+      - '{{.CLASP}} open-script'

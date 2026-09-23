@@ -371,7 +371,7 @@
   function finishWithOffset(minutes) {
     try {
       var input = document.getElementById('finishTimeInput');
-      var base = input.value ? DateTime.parseLocal(input.value) : Date.now();
+      var base = input.value ? DateTime.parseLocal(input.value) : DateTime.roundUp(Date.now(), 5);
       input.value = DateTime.formatLocal(DateTime.addMinutes(base, minutes * appState.offsetSign));
     } catch (error) {
       reportError(error);
@@ -386,7 +386,7 @@
       var value = input.value;
       var end = value ? DateTime.parseLocal(value) : null;
       if (end !== null && appState.status.active) DateTime.validateRange(appState.status.startTime, end);
-      if (!(await showConfirm(value ? value.replace('T', ' ') + ' に終了しますか?' : '今の時刻で終了しますか?'))) return;
+      if (!(await showConfirm(value ? value.replace('T', ' ') + ' に終了しますか?' : '現在時刻を5分単位で切り上げて終了しますか?'))) return;
       appState.status = await callServer('finishActivity', end);
       renderStatus();
       showMessage('終了しました');

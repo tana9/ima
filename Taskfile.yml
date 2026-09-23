@@ -54,7 +54,7 @@ tasks:
     desc: テスト成功後にソースをApps Scriptへ反映する
     cmds:
       - task: test
-      - '{{.CLASP}} push'
+      - '{{.CLASP}} push --force'
 
   deployments:
     desc: デプロイIDと公開バージョンを一覧表示する

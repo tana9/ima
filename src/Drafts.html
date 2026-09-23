@@ -1,0 +1,101 @@
+<script>
+// 同じタブの再読み込みに備える。画像本体は保存せず、再選択を案内する。
+var draftsReady = false;
+var restoredImageName = '';
+var restoredFinishDraft = null;
+var draftStorageKey = 'ima-draft-v1';
+
+function draftText(value) { return typeof value === 'string' ? value : ''; }
+
+function initDrafts() {
+  if (document.querySelector('meta[name="preview-revision"]') && typeof location !== 'undefined') {
+    draftStorageKey += ':preview:' + (new URLSearchParams(location.search).get('scenario') || 'active');
+  }
+  try {
+    var saved = JSON.parse(sessionStorage.getItem(draftStorageKey) || 'null');
+    if (saved && saved.version === 1) {
+      if (saved.selectedDate) {
+        DateRules.dayRange(saved.selectedDate);
+        appState.selectedDate = saved.selectedDate;
+      }
+      var activity = saved.activity || {};
+      ['title', 'location', 'description'].forEach(function(field) {
+        document.getElementById(field + 'Input').value = draftText(activity[field]);
+      });
+      restoredImageName = draftText(activity.imageName);
+      restoredFinishDraft = saved.finish || null;
+      var edit = saved.edit;
+      if (edit && typeof edit.id === 'string') {
+        var draft = { id: edit.id, file: null, dirty: true };
+        ['title', 'location', 'description', 'start', 'end', 'imageName'].forEach(function(field) { draft[field] = draftText(edit[field]); });
+        appState.editingEventId = draft.id;
+        appState.editDraft = draft;
+      }
+      if (activity.location || activity.description || restoredImageName) document.querySelector('.more-options').open = true;
+      document.getElementById('draftStatus').textContent = 'このタブの入力を復元しました。' +
+        (restoredImageName || (edit && edit.imageName) ? '画像は再選択してください。' : '');
+    }
+  } catch (_) {
+    document.getElementById('draftStatus').textContent = '下書きを復元できませんでした。入力して続けられます。';
+  }
+  draftsReady = true;
+  ['titleInput', 'locationInput', 'descriptionInput', 'finishTimeInput'].forEach(function(id) {
+    document.getElementById(id).addEventListener('input', persistDrafts);
+  });
+  document.getElementById('imageInput').addEventListener('change', function() {
+    restoredImageName = '';
+    renderImageDraftHint();
+    persistDrafts();
+  });
+  renderImageDraftHint();
+}
+
+function renderImageDraftHint() {
+  document.getElementById('imageDraftHint').textContent = restoredImageName ? '画像「' + restoredImageName + '」を再選択してください。不要なら選択を解除できます。' : '';
+}
+
+function clearSelectedImage() {
+  document.getElementById('imageInput').value = '';
+  restoredImageName = '';
+  renderImageDraftHint();
+  persistDrafts();
+}
+
+function restoreFinishDraft() {
+  if (!restoredFinishDraft) return;
+  if (appState.status.active && restoredFinishDraft.eventId === appState.status.eventId) {
+    document.getElementById('finishTimeInput').value = draftText(restoredFinishDraft.value);
+  }
+  restoredFinishDraft = null;
+}
+
+function persistDrafts() {
+  if (!draftsReady) return;
+  var edit = appState.editDraft;
+  var file = document.getElementById('imageInput').files[0];
+  var saved = { version: 1, selectedDate: appState.selectedDate,
+    activity: { title: document.getElementById('titleInput').value,
+      location: document.getElementById('locationInput').value,
+      description: document.getElementById('descriptionInput').value,
+      imageName: file ? file.name : restoredImageName },
+    finish: restoredFinishDraft || { eventId: appState.status && appState.status.eventId,
+      value: document.getElementById('finishTimeInput').value },
+    edit: edit ? { id: edit.id, title: edit.title, location: edit.location, description: edit.description,
+      start: edit.start, end: edit.end, imageName: edit.file ? edit.file.name : edit.imageName || '' } : null };
+  try { sessionStorage.setItem(draftStorageKey, JSON.stringify(saved)); }
+  catch (_) { document.getElementById('draftStatus').textContent = 'このブラウザでは下書きを保存できません。再読み込みすると入力が消えます。'; }
+}
+
+async function discardDrafts() {
+  return runAction(async function() {
+    if (!(await showConfirm('入力中の下書きを破棄しますか? 保存済みの記録は変更されません。'))) return;
+    ['titleInput', 'locationInput', 'descriptionInput', 'finishTimeInput'].forEach(function(id) { document.getElementById(id).value = ''; });
+    appState.editingEventId = null;
+    appState.editDraft = null;
+    restoredFinishDraft = null;
+    clearSelectedImage();
+    renderTodayEvents();
+    document.getElementById('draftStatus').textContent = '下書きを破棄しました。入力はこのタブに一時保存します。';
+  });
+}
+</script>

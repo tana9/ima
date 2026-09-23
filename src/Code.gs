@@ -70,15 +70,18 @@ function include_(filename) {
   return HtmlService.createHtmlOutputFromFile(filename).getContent();
 }
 
-function getDashboard() {
-  return withUserLock_(getDashboard_);
+function getDashboard(selectedDate) {
+  return withUserLock_(function() { return getDashboard_(selectedDate); });
 }
 
-function getDashboard_() {
+function getDashboard_(selectedDate) {
+  var range = DateRules.dayRange(selectedDate == null ? DateRules.calendarDate(Date.now()) : selectedDate);
+  var status = getCurrentStatus_();
   return {
-    status: getCurrentStatus_(),
-    events: getTodayEvents(),
-    titles: getRecentTitles(8)
+    status: status,
+    events: getDayEvents_(range, status),
+    titles: getRecentTitles(8),
+    day: range
   };
 }
 
@@ -218,14 +221,21 @@ function getRecentTitles(limit) {
   return order.slice(0, limit);
 }
 
-// 今日(0:00〜24:00)に登録された予定を、開始時刻順に返す
+// 今日と重なる記録を返す。日付指定の画面は getDashboard を使う。
 function getTodayEvents() {
-  var now = new Date();
-  var start = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  var end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
-  var currentId = PropertiesService.getUserProperties().getProperty(CURRENT_EVENT_ID_KEY);
+  return withUserLock_(function() {
+    return getDayEvents_(DateRules.dayRange(DateRules.calendarDate(Date.now())), getCurrentStatus_());
+  });
+}
 
-  var events = getImaCalendar_().getEvents(start, end);
+function getDayEvents_(range, status) {
+  var calendar = getImaCalendar_();
+  var events = calendar.getEvents(new Date(range.start), new Date(range.end));
+  // 進行中の仮終了が前日でも、実際には選択日まで継続している場合を含める。
+  if (status.active && !events.some(function(event) { return event.getId() === status.eventId; })) {
+    var current = calendar.getEventById(status.eventId);
+    if (current) events.push(current);
+  }
   events.sort(function(a, b) { return a.getStartTime().getTime() - b.getStartTime().getTime(); });
 
   return events.map(function(e) {
@@ -236,9 +246,9 @@ function getTodayEvents() {
       description: e.getDescription(),
       start: e.getStartTime().getTime(),
       end: e.getEndTime().getTime(),
-      active: e.getId() === currentId
+      active: status.active && e.getId() === status.eventId
     };
-  });
+  }).filter(function(event) { return DateRules.overlapsDay(event, range, Date.now()); });
 }
 
 // 予定の内容・場所・説明・時刻を編集する。進行中の予定は終了時刻を変更できない(endMillis を null にする)。

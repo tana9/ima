@@ -9,6 +9,11 @@ var google = (function() {
     { id: '見本2', title: '資料作成', location: '自宅', description: '打ち合わせ用の資料', start: now - 1800000, end: now + interval, active: true }
   ];
   if (scenario === 'empty') events = [];
+  if (scenario === 'history') {
+    var yesterday = DateRules.dayRange(DateRules.shiftDay(DateRules.calendarDate(now), -1)).start;
+    events.push({ id: '見本前日', title: '資料作成', location: '自宅', description: '前日の見本',
+      start: yesterday + 9 * 3600000, end: yesterday + 11 * 3600000, active: false });
+  }
   if (scenario === 'long') {
     events[1].title = '来週の打ち合わせに向けた資料作成と関係者への確認事項の整理'.repeat(4);
     events[1].location = 'オンライン会議室・共同作業スペース';
@@ -34,12 +39,14 @@ var google = (function() {
     if ((status().eventId || null) !== expectedId) throw new Error('進行中の作業が変更されています。「再読み込み」で確認してから操作してください');
   }
   var methods = {
-    getDashboard: function() {
+    getDashboard: function(selectedDate) {
       if (failNextRead) {
         failNextRead = false;
         throw new Error('通信エラーの見本です。「再読み込み」で復旧を確認できます。');
       }
-      return { status: status(), events: events.slice().sort(function(a, b) { return a.start - b.start; }),
+      var day = DateRules.dayRange(selectedDate == null ? DateRules.calendarDate(Date.now()) : selectedDate);
+      return { status: status(), day: day,
+        events: events.filter(function(event) { return DateRules.overlapsDay(event, day, Date.now()); }).sort(function(a, b) { return a.start - b.start; }),
         titles: Array.from(new Set(events.map(function(event) { return event.title; }))) };
     },
     startActivity: function(title, location, description, expectedId) {

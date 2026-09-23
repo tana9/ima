@@ -122,6 +122,68 @@ test('開始後に画像添付が失敗した場合は保存済みの記録の�
   await expect(page.locator('.today-item')).toHaveCount(1);
 });
 
+test('前日の記録を日時ごと編集でき、日付移動と作業時間の集計が一致する', async ({ page }) => {
+  await page.goto('/?scenario=history');
+  await expect(page.locator('#daySummary')).toContainText('合計 1時間3分');
+  await page.getByRole('button', { name: '前日', exact: true }).click();
+  await expect(page.locator('#recordDateInput')).toHaveValue('2026-09-22');
+  await expect(page.locator('#status')).toContainText('資料作成');
+  await expect(page.locator('#daySummary')).toContainText('資料作成：2時間');
+  await page.locator('.today-item').click();
+  await page.getByLabel('開始', { exact: true }).fill('2026-09-21T23:30');
+  await page.getByLabel('終了', { exact: true }).fill('2026-09-22T00:30');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.locator('#daySummary')).toContainText('合計 30分');
+  await expect(page.locator('.today-time')).toContainText('2026-09-21 23:30');
+  await page.getByRole('button', { name: '前日', exact: true }).click();
+  await expect(page.locator('#daySummary')).toContainText('合計 30分');
+  await page.getByRole('button', { name: '翌日', exact: true }).click();
+  await expect(page.locator('#recordDateInput')).toHaveValue('2026-09-22');
+  await page.getByRole('button', { name: '今日', exact: true }).click();
+  await expect(page.locator('#recordDateInput')).toHaveValue('2026-09-23');
+  await page.getByLabel('記録の日付（日本時間）').fill('2026-09-24');
+  await expect(page.locator('#todayList')).toHaveText('この日の記録はありません。');
+  await expect(page.locator('#daySummary')).toContainText('合計 0分');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+});
+
+test('開始前の下書きを再読み込みで復元し、画像の再選択を案内して破棄できる', async ({ page }) => {
+  await page.goto('/?scenario=empty');
+  await page.getByLabel('今やっていること').fill('途中の作業');
+  await page.getByText('場所・説明・画像を追加', { exact: true }).click();
+  await page.getByLabel('場所(任意)', { exact: true }).fill('自宅');
+  await page.getByLabel('説明(任意)', { exact: true }).fill('途中のメモ');
+  await page.locator('#imageInput').setInputFiles({ name: '写真.png', mimeType: 'image/png', buffer: Buffer.from([137, 80, 78, 71]) });
+  await page.reload();
+  await expect(page.getByLabel('今やっていること')).toHaveValue('途中の作業');
+  await expect(page.getByLabel('場所(任意)', { exact: true })).toHaveValue('自宅');
+  await expect(page.getByLabel('説明(任意)', { exact: true })).toHaveValue('途中のメモ');
+  await expect(page.locator('#imageDraftHint')).toContainText('再選択してください');
+  await expect(page.locator('#imageInput')).toHaveValue('');
+  await page.getByRole('button', { name: '下書きを破棄', exact: true }).click();
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await page.reload();
+  await expect(page.getByLabel('今やっていること')).toHaveValue('');
+  await expect(page.locator('#imageDraftHint')).toHaveText('');
+});
+
+test('過去の記録の編集下書きを復元し、保存成功後は下書きを消す', async ({ page }) => {
+  await page.goto('/?scenario=history');
+  await page.getByRole('button', { name: '前日', exact: true }).click();
+  await page.locator('.today-item').click();
+  await page.getByLabel('内容', { exact: true }).fill('編集中の内容');
+  await page.getByLabel('開始', { exact: true }).fill('2026-09-22T08:30');
+  await page.reload();
+  await expect(page.locator('#recordDateInput')).toHaveValue('2026-09-22');
+  await expect(page.getByLabel('内容', { exact: true })).toHaveValue('編集中の内容');
+  await expect(page.getByLabel('開始', { exact: true })).toHaveValue('2026-09-22T08:30');
+  await page.getByRole('button', { name: '保存', exact: true }).click();
+  await expect(page.locator('#daySummary')).toContainText('編集中の内容：2時間30分');
+  await page.reload();
+  await expect(page.locator('.today-edit')).toHaveCount(0);
+  await expect(page.locator('#recordDateInput')).toHaveValue('2026-09-22');
+});
+
 test('HTML保存で自動更新し、一時停止中は入力を保持して再開後に反映する', async ({ page }) => {
   // 他のテストや作業中のソースを変更しないよう、一時コピーを配信する。
   const sourceRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'ima-browser-'));

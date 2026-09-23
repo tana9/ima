@@ -3,6 +3,8 @@ var appState = {
   status: null,
   events: [],
   titles: [],
+  selectedDate: null,
+  day: null,
   editingEventId: null,
   editDraft: null,
   busy: false,
@@ -17,10 +19,14 @@ function applyDashboard(snapshot) {
   appState.status = snapshot.status;
   appState.events = snapshot.events || [];
   appState.titles = snapshot.titles || [];
+  appState.day = snapshot.day || DateRules.dayRange(appState.selectedDate || DateRules.calendarDate(Date.now()));
+  appState.selectedDate = appState.day.date;
+  restoreFinishDraft();
   if (!appState.events.some(function(event) { return event.id === appState.editingEventId; })) {
     appState.editingEventId = null;
     appState.editDraft = null;
   }
+  persistDrafts();
 }
 
 // 古い応答で新しい画面状態を上書きしない。
@@ -30,7 +36,7 @@ async function refreshDashboard() {
   appState.loadError = false;
   renderControls();
   try {
-    var snapshot = await callServer('getDashboard');
+    var snapshot = await callServer('getDashboard', appState.selectedDate);
     if (version !== appState.refreshVersion) return false;
     applyDashboard(snapshot);
     renderDashboard();

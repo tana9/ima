@@ -40,8 +40,28 @@ var DateTime = (function() {
   function elapsedMinutes(start, now) {
     return Math.max(0, Math.round((date(now).getTime() - date(start).getTime()) / MINUTE));
   }
+  function editDateTime(baseMillis, value) {
+    return formatLocal(baseMillis) === value ? baseMillis : parseLocal(value);
+  }
+  function summarize(events, range, now) {
+    var totals = Object.create(null);
+    events.forEach(function(event) {
+      var end = event.active ? now : event.end;
+      var duration = Math.max(0, Math.min(end, range.end) - Math.max(event.start, range.start));
+      totals[event.title] = (totals[event.title] || 0) + duration;
+    });
+    var items = Object.keys(totals).map(function(title) { return { title: title, millis: totals[title] }; });
+    items.sort(function(a, b) { return b.millis - a.millis || a.title.localeCompare(b.title, 'ja'); });
+    return { total: items.reduce(function(sum, item) { return sum + item.millis; }, 0), items: items };
+  }
+  function formatDuration(millis) {
+    var minutes = Math.floor(millis / MINUTE);
+    if (millis > 0 && minutes === 0) return '1分未満';
+    return minutes >= 60 ? Math.floor(minutes / 60) + '時間' + (minutes % 60 ? minutes % 60 + '分' : '') : minutes + '分';
+  }
   return { formatTime: formatTime, formatLocal: formatLocal, parseLocal: parseLocal,
     timeOnDate: timeOnDate, addMinutes: addMinutes, roundUp: roundUp,
-    validateRange: validateRange, elapsedMinutes: elapsedMinutes };
+    validateRange: validateRange, elapsedMinutes: elapsedMinutes, editDateTime: editDateTime,
+    summarize: summarize, formatDuration: formatDuration };
 })();
 </script>

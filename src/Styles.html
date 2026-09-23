@@ -131,8 +131,9 @@
       margin: 12px 0 6px;
     }
     label.field-label:first-of-type { margin-top: 0; }
-    input[type="text"], input[type="time"], input[type="datetime-local"], select, textarea {
+    input[type="text"], input[type="time"], input[type="datetime-local"], input[type="date"], select, textarea {
       width: 100%;
+      min-width: 0;
       padding: 12px;
       font-size: 16px;
       border: 1px solid var(--border);
@@ -326,6 +327,10 @@
       cursor: pointer;
     }
     .today-item:last-child { border-bottom: none; }
+    .day-navigation { display: flex; gap: 8px; }
+    .day-summary { margin-top: 16px; overflow-wrap: anywhere; }
+    .day-summary ul { padding-left: 20px; }
+    .today-time { white-space: pre-line; }
     button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
     .error-notice { border: 2px solid var(--error); }
     .error-notice p { white-space: pre-wrap; overflow-wrap: anywhere; }

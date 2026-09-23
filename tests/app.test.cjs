@@ -166,13 +166,13 @@ test('編集の入力検証で送信を防ぎ、再表示後も下書きを保�
   const form = context.buildEditForm(event);
   form.querySelector('.edit-title').value = '下書き';
   await form.querySelector('.edit-title').emit('input');
-  form.querySelector('.edit-end').value = '09:00';
+  form.querySelector('.edit-end').value = '2026-09-23T09:00';
   await form.querySelector('.edit-end').emit('input');
   await form.querySelector('.edit-save').emit('click');
   assert.equal(result.calls.length, 0);
   const rebuilt = context.buildEditForm(event);
   assert.equal(rebuilt.querySelector('.edit-title').value, '下書き');
-  assert.equal(rebuilt.querySelector('.edit-end').value, '09:00');
+  assert.equal(rebuilt.querySelector('.edit-end').value, '2026-09-23T09:00');
 });
 
 test('添付失敗時は再試行できるよう編集下書きとファイルを保持する', async () => {
@@ -208,7 +208,7 @@ test('編集中の記録を削除すると編集状態を解除し、画面全�
 
 test('テンプレートは全クライアントモジュールを順に読み込み、ビルドなしで構文解析できる', () => {
   const includes = [...source('Index.html').matchAll(/<\?!= include_\('([^']+)'\); \?>/g)].map(match => match[1]);
-  assert.deepEqual(includes, ['Styles', 'DateTime', 'Api', 'State', 'App']);
+  assert.deepEqual(includes, ['Styles', 'DateTime', 'Api', 'State', 'Drafts', 'App']);
   const rules = vm.createContext({});
   vm.runInContext(source('DateValidation.gs'), rules);
   const rendered = source('Index.html').replace(/<\?!= include_\('([^']+)'\); \?>/g, (_, name) => source(name + '.html'))

@@ -8,7 +8,12 @@ const { renderPreview, createPreviewServer } = require('../scripts/preview.cjs')
 const { script, source } = require('./helpers.cjs');
 
 function previewContext(scenario = 'active') {
-  const context = vm.createContext({ location: { search: '?scenario=' + scenario }, URLSearchParams });
+  // 日付による絞り込みが深夜の実行時刻に左右されないよう固定する。
+  class FixedDate extends Date {
+    constructor(...args) { super(...(args.length ? args : ['2026-09-23T10:03:00+09:00'])); }
+    static now() { return Date.parse('2026-09-23T10:03:00+09:00'); }
+  }
+  const context = vm.createContext({ Date: FixedDate, location: { search: '?scenario=' + scenario }, URLSearchParams });
   vm.runInContext(source('DateValidation.gs'), context);
   const mock = fs.readFileSync(path.join(__dirname, '../scripts/preview-mock.js'), 'utf8');
   vm.runInContext(mock + script('DateTime.html') + script('Api.html'), context);

@@ -72,6 +72,7 @@
 
   <div class="card" id="finishCard" style="display:none;">
     <h2>終了する</h2>
+    <p id="forgottenWarning" class="forgotten-warning" hidden></p>
     <div class="empty-hint">終了時刻の既定値は現在時刻を5分単位で切り上げます</div>
     <div class="quick-list">
       <button class="btn-secondary icon-btn" id="signToggleBtn" onclick="toggleOffsetSign()" aria-label="符号切り替え">
@@ -113,6 +114,10 @@
   <div id="confirmOverlay" class="confirm-overlay" style="display:none;">
     <div class="confirm-box" role="dialog" aria-modal="true" aria-labelledby="confirmMessage">
       <div id="confirmMessage" class="confirm-message"></div>
+      <div id="confirmField" class="confirm-field" hidden>
+        <label class="field-label" id="confirmDateTimeLabel" for="confirmDateTimeInput"></label>
+        <input type="datetime-local" id="confirmDateTimeInput">
+      </div>
       <div class="confirm-actions">
         <button type="button" class="btn-secondary" id="confirmCancelBtn">キャンセル</button>
         <button type="button" class="btn-primary" id="confirmOkBtn" style="margin-top:0;">OK</button>

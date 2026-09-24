@@ -373,6 +373,8 @@
     .today-time { white-space: pre-line; }
     button:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
     .error-notice { border: 2px solid var(--error); }
+    .forgotten-warning { color: var(--error); font-weight: 600; font-size: 14px; margin: 0 0 8px; }
+    #finishCard.long-running { border: 2px solid var(--error); }
     .error-notice p { white-space: pre-wrap; overflow-wrap: anywhere; }
     @media (max-width: 719px) {
       #finishCard:not([style*="display: none"]) {
@@ -463,6 +465,8 @@
       line-height: 1.5;
       white-space: pre-wrap;
     }
+    .confirm-field { margin-bottom: 20px; }
+    .confirm-field input { margin-bottom: 0; }
     .confirm-actions {
       display: flex;
       gap: 8px;

@@ -162,6 +162,25 @@ test('記録をキーボードで編集でき、確認画面のフォーカス�
   await expect(remove).toBeFocused();
 });
 
+test('終了し忘れを警告し、開始時に前の作業の終了日時を補正できる', async ({ page }) => {
+  await page.goto('/?scenario=forgotten');
+  await expect(page.locator('#forgottenWarning')).toContainText('開始から5時間以上経過しています。終了し忘れていませんか');
+  await page.getByLabel('今やっていること').fill('会議');
+  await page.getByRole('button', { name: '開始する', exact: true }).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toContainText('前の作業「資料作成」は開始から5時間3分経過');
+  const previousEnd = dialog.getByLabel('前の作業の終了日時');
+  await expect(previousEnd).toHaveValue('2026-09-23T10:00');
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Shift+Tab');
+  await expect(previousEnd).toBeFocused();
+  await previousEnd.fill('2026-09-23T08:00');
+  await page.getByRole('button', { name: 'OK', exact: true }).click();
+  await expect(page.locator('#status')).toContainText('会議');
+  await expect(page.locator('#forgottenWarning')).toBeHidden();
+  await expect(page.locator('.today-time')).toHaveText(['04:00〜05:00', '05:00〜08:00', '10:00〜進行中']);
+});
+
 test('古い画面からの終了を拒否し、エラーを保持したまま再読み込みで復旧する', async ({ page }) => {
   await page.goto('/');
   await expect(page.locator('#status')).toContainText('資料作成');

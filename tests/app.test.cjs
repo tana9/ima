@@ -220,3 +220,65 @@ test('テンプレートは全クライアントモジュールを順に読み�
   }
   assert.equal([...rendered.matchAll(/<style>/g)].length, 1);
 });
+
+test('長時間の進行中に開始すると前の作業の終了日時を確認し、変更した値を送信する', async () => {
+  const { context, fields, handlers, result } = client(new Date(2026, 8, 23, 15, 3).getTime());
+  context.appState.status = { active: true, title: '資料作成', startTime: new Date(2026, 8, 23, 9).getTime(), eventId: '前' };
+  handlers.startActivity = () => ({ active: true, title: '会議', startTime: Date.now(), eventId: '新' });
+  let options;
+  context.showConfirm = async (message, value) => {
+    result.confirmation = message;
+    options = value;
+    fields.confirmDateTimeInput.value = '2026-09-23T12:00';
+    return true;
+  };
+  fields.titleInput.value = '会議';
+  await context.handleStart();
+  assert.match(result.confirmation, /前の作業「資料作成」は開始から6時間3分経過/);
+  assert.equal(options.dateTime, '2026-09-23T15:00');
+  const start = result.calls.find(call => call.method === 'startActivity');
+  assert.equal(start.args[4], new Date(2026, 8, 23, 12).getTime());
+});
+
+test('前の作業の終了日時が既定値のままなら指定せず、短時間なら確認しない', async () => {
+  for (const [startMinute, asked] of [[3, true], [4, false]]) {
+    const { context, fields, handlers, result } = client(new Date(2026, 8, 23, 15, 3).getTime());
+    context.appState.status = { active: true, title: '資料作成', startTime: new Date(2026, 8, 23, 14, startMinute).getTime(), eventId: '前' };
+    handlers.startActivity = () => ({ active: true, title: '会議', startTime: Date.now(), eventId: '新' });
+    fields.titleInput.value = '会議';
+    await context.handleStart();
+    assert.equal(/前の作業/.test(result.confirmation), asked);
+    assert.equal(result.calls.find(call => call.method === 'startActivity').args[4], null);
+  }
+});
+
+test('前の作業の終了日時が不正なら開始を送信せず、入力を保持する', async () => {
+  for (const [value, message] of [['2026-09-23T08:00', /開始時刻より後/], ['2026-09-23T15:30', /新しい開始時刻以前/], ['', /有効な日時/]]) {
+    const { context, fields, result } = client(new Date(2026, 8, 23, 15, 3).getTime());
+    context.appState.status = { active: true, title: '資料作成', startTime: new Date(2026, 8, 23, 9).getTime(), eventId: '前' };
+    context.showConfirm = async () => { fields.confirmDateTimeInput.value = value; return true; };
+    fields.titleInput.value = '会議';
+    await context.handleStart();
+    assert.equal(result.calls.length, 0);
+    assert.equal(fields.titleInput.value, '会議');
+    assert.match(result.messages.at(-1).message, message);
+  }
+});
+
+test('進行中が1時間以上になると経過時間ごとに終了し忘れの警告を表示し、終了後は隠す', () => {
+  for (const [start, text] of [
+    [new Date(2026, 8, 23, 14, 4), null],
+    [new Date(2026, 8, 23, 14, 3), '開始から1時間以上経過'],
+    [new Date(2026, 8, 23, 12, 4), '開始から2時間以上経過'],
+    [new Date(2026, 8, 23, 12, 3), '開始から3時間以上経過']
+  ]) {
+    const { context, fields } = client(new Date(2026, 8, 23, 15, 3).getTime());
+    context.appState.status = { active: true, title: '資料作成', startTime: start.getTime() };
+    context.renderStatus();
+    assert.equal(fields.forgottenWarning.hidden, text === null);
+    if (text) assert.match(fields.forgottenWarning.textContent, new RegExp(text + '.*終了し忘れ'));
+    context.appState.status = { active: false };
+    context.renderStatus();
+    assert.equal(fields.forgottenWarning.hidden, true);
+  }
+});

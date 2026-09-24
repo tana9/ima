@@ -14,6 +14,11 @@ var google = (function() {
     events.push({ id: '見本前日', title: '資料作成', location: '自宅', description: '前日の見本',
       start: yesterday + 9 * 3600000, end: yesterday + 11 * 3600000, active: false });
   }
+  if (scenario === 'forgotten') {
+    events[0].start = now - 6 * 3600000;
+    events[0].end = now - 5 * 3600000;
+    events[1].start = now - 5 * 3600000;
+  }
   if (scenario === 'long') {
     events[1].title = '来週の打ち合わせに向けた資料作成と関係者への確認事項の整理'.repeat(4);
     events[1].location = 'オンライン会議室・共同作業スペース';
@@ -49,12 +54,13 @@ var google = (function() {
         events: events.filter(function(event) { return DateRules.overlapsDay(event, day, Date.now()); }).sort(function(a, b) { return a.start - b.start; }),
         titles: Array.from(new Set(events.map(function(event) { return event.title; }))) };
     },
-    startActivity: function(title, location, description, expectedId) {
+    startActivity: function(title, location, description, expectedId, previousEnd) {
       requireCurrent(expectedId);
       title = title.trim();
       if (!title) throw new Error('内容を入力してください');
       var start = DateRules.roundDown(Date.now(), 5);
-      close(start, false);
+      var previous = events.find(function(item) { return item.active; });
+      close(previous ? DateRules.handoverEnd(previous.start, start, previousEnd) : start, false);
       events.push({ id: '見本' + nextId++, title: title, location: location.trim(), description: description.trim(),
         start: start, end: start + interval, active: true });
       return status();

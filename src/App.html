@@ -1,5 +1,8 @@
 <script>
 
+  // 進行中が長い場合は終了し忘れの可能性が高いため、警告や前の作業の終了日時の確認を表示する。
+  var LONG_RUNNING_MINUTES = 60;
+
   function init() {
     initDrafts();
     document.getElementById('titleInput').addEventListener('input', updateStartButtonState);
@@ -11,6 +14,8 @@
     });
     document.getElementById('signToggleBtn').innerHTML = ICON_CIRCLE_PLUS;
     initToastKeyboardAvoidance();
+    // 非表示中のタブはタイマーが間引かれるため、戻ったときに経過時間と警告を更新する。
+    document.addEventListener('visibilitychange', function() { if (!document.hidden) updateElapsed(); });
     refreshDashboard();
   }
 
@@ -348,14 +353,23 @@
     appState.timers.toast = setTimeout(function() { el.className = el.className.replace('show', ''); }, 2600);
   }
 
-  function showConfirm(message) {
+  // options.dateTime を指定すると日時の入力欄を表示する。入力値は確定後に confirmDateTimeInput から読み取る。
+  function showConfirm(message, options) {
     return new Promise(function(resolve) {
       var overlay = document.getElementById('confirmOverlay');
       var msgEl = document.getElementById('confirmMessage');
       var okBtn = document.getElementById('confirmOkBtn');
       var cancelBtn = document.getElementById('confirmCancelBtn');
+      var field = document.getElementById('confirmField');
+      var dateInput = document.getElementById('confirmDateTimeInput');
       var previousFocus = document.activeElement;
       msgEl.textContent = message;
+      field.hidden = !(options && options.dateTime !== undefined);
+      if (!field.hidden) {
+        document.getElementById('confirmDateTimeLabel').textContent = options.dateTimeLabel;
+        dateInput.value = options.dateTime;
+      }
+      var focusables = field.hidden ? [cancelBtn, okBtn] : [dateInput, cancelBtn, okBtn];
       overlay.style.display = 'flex';
       okBtn.focus();
 
@@ -375,7 +389,9 @@
         if (e.key === 'Escape') { e.preventDefault(); cleanup(false); }
         if (e.key === 'Tab') {
           e.preventDefault();
-          (document.activeElement === okBtn ? cancelBtn : okBtn).focus();
+          var index = focusables.indexOf(document.activeElement);
+          var next = index < 0 ? 0 : (index + (e.shiftKey ? -1 : 1) + focusables.length) % focusables.length;
+          focusables[next].focus();
         }
       }
 
@@ -416,6 +432,7 @@
     } else {
       dot.classList.remove('active');
       finishCard.style.display = 'none';
+      showForgottenWarning(0);
       var idle = document.createElement('span');
       idle.className = 'idle';
       idle.textContent = '現在なにも記録していません';
@@ -426,10 +443,20 @@
 
   function updateElapsed() {
     renderSummary();
-    var elText = document.getElementById('elapsedText');
-    if (!elText || !appState.status || !appState.status.active) return;
+    if (!appState.status || !appState.status.active) return;
     var mins = DateTime.elapsedMinutes(appState.status.startTime, Date.now());
-    elText.textContent = mins + '分前から';
+    var elText = document.getElementById('elapsedText');
+    if (elText) elText.textContent = mins + '分前から';
+    showForgottenWarning(mins >= LONG_RUNNING_MINUTES ? Math.floor(mins / 60) : 0);
+  }
+
+  // 経過時間(時間単位)を表示し、1時間ごとに文言を更新する。0なら隠す。
+  function showForgottenWarning(hours) {
+    var show = hours > 0;
+    var warning = document.getElementById('forgottenWarning');
+    warning.hidden = !show;
+    warning.textContent = show ? '開始から' + hours + '時間以上経過しています。終了し忘れていませんか?' : '';
+    document.getElementById('finishCard').classList.toggle('long-running', show);
   }
 
   function setFinishTimeToNow() {
@@ -470,8 +497,18 @@
       var imageInput = document.getElementById('imageInput');
       var file = selectedImage(imageInput);
       if (restoredImageName && !file) throw new Error('画像を再選択するか、画像の選択を解除してください');
-      if (!(await showConfirm(title + ' を開始しますか?'))) return;
-      var result = await callServer('startActivity', title, location, description, appState.status.eventId || null);
+      var previous = appState.status.active ? appState.status : null;
+      var plannedStart = DateRules.roundDown(Date.now(), 5);
+      var askPreviousEnd = !!previous && DateTime.elapsedMinutes(previous.startTime, Date.now()) >= LONG_RUNNING_MINUTES;
+      var defaultPreviousEnd = DateTime.formatLocal(plannedStart);
+      var message = title + ' を開始しますか?';
+      if (askPreviousEnd) {
+        message += '\n\n前の作業「' + previous.title + '」は開始から' +
+          DateTime.formatDuration(Date.now() - previous.startTime) + '経過しています。終了し忘れていた場合は終了日時を変更してください。';
+      }
+      if (!(await showConfirm(message, askPreviousEnd ? { dateTimeLabel: '前の作業の終了日時', dateTime: defaultPreviousEnd } : null))) return;
+      var previousEnd = askPreviousEnd ? previousEndFromInput(previous.startTime, plannedStart, defaultPreviousEnd) : null;
+      var result = await callServer('startActivity', title, location, description, appState.status.eventId || null, previousEnd);
       appState.status = result;
       renderStatus();
       input.value = '';
@@ -489,6 +526,15 @@
       await refreshDashboard();
       scrollToStatus();
     });
+  }
+
+  // 既定値のままなら null を返し、サーバーが実際の開始時刻で前の作業を終了する。
+  function previousEndFromInput(previousStart, plannedStart, defaultValue) {
+    var value = document.getElementById('confirmDateTimeInput').value;
+    if (value === defaultValue) return null;
+    var end = DateTime.parseLocal(value);
+    DateRules.handoverEnd(previousStart, plannedStart, end);
+    return end;
   }
 
   function scrollToStatus() {

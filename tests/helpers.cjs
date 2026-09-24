@@ -73,7 +73,11 @@ function client(now = new Date(2026, 8, 23, 12).getTime()) {
   }
   context.appState.status = { active: false };
   context.showMessage = (message, error) => result.messages.push({ message, error });
-  context.showConfirm = async message => { result.confirmation = message; return true; };
+  context.showConfirm = async (message, options) => {
+    result.confirmation = message;
+    if (options) fields.confirmDateTimeInput.value = options.dateTime;
+    return true;
+  };
   return { context, input: fields.finishTimeInput, fields, handlers, result };
 }
 

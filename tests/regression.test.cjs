@@ -186,3 +186,49 @@ test('開始直後の記録でも自動終了時は最低限の長さを確保�
   assert.deepEqual(changes, [[2000, 62000]]);
   assert.equal(currentId(), null);
 });
+
+test('前の作業の終了日時を指定して開始でき、不正な指定では記録を変更しない', () => {
+  const now = Date.parse('2026-09-23T15:03:00+09:00');
+  const previousStart = Date.parse('2026-09-23T09:00:00+09:00');
+  function setup() {
+    class FixedDate extends Date {
+      constructor(...args) { super(...(args.length ? args : [now])); }
+      static now() { return now; }
+    }
+    const context = vm.createContext({ Date: FixedDate, LockService });
+    vm.runInContext(source('DateValidation.gs'), context);
+    vm.runInContext(source('Code.gs'), context);
+    const state = { currentId: '前の記録', previousEnd: null, created: 0 };
+    context.PropertiesService = { getUserProperties: () => ({
+      getProperty: () => state.currentId,
+      deleteProperty: () => { state.currentId = null; },
+      setProperty: (_, value) => { state.currentId = value; }
+    }) };
+    context.cachedCalendar_ = {
+      getEventById: () => ({
+        getStartTime: () => new Date(previousStart),
+        getEndTime: () => new Date(previousStart + 300000),
+        setTime: (_, end) => { state.previousEnd = end.getTime(); }
+      }),
+      createEvent: () => { state.created++; return { getId: () => '新しい記録' }; }
+    };
+    return { context, state };
+  }
+
+  const { context, state } = setup();
+  const lunch = Date.parse('2026-09-23T12:00:00+09:00');
+  context.startActivity('作業', '', '', '前の記録', lunch);
+  assert.equal(state.previousEnd, lunch);
+  assert.equal(state.currentId, '新しい記録');
+
+  for (const [end, message] of [
+    [Date.parse('2026-09-23T15:05:00+09:00'), /新しい開始時刻以前/],
+    [previousStart, /終了時刻は開始時刻より後/]
+  ]) {
+    const { context, state } = setup();
+    assert.throws(() => context.startActivity('作業', '', '', '前の記録', end), message);
+    assert.equal(state.created, 0);
+    assert.equal(state.previousEnd, null);
+    assert.equal(state.currentId, '前の記録');
+  }
+});

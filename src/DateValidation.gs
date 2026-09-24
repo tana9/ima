@@ -37,6 +37,13 @@ function createDateRules_() {
     if (explicit) return validateRange(start, end).end;
     return end > start ? end : timestamp(start + 60000);
   }
+  // 新しい作業の開始時に前の作業を閉じる終了時刻。省略時は新しい開始時刻で閉じる。
+  function handoverEnd(previousStart, start, previousEnd) {
+    if (previousEnd === null || previousEnd === undefined) return closeEnd(previousStart, start, false);
+    var end = closeEnd(previousStart, previousEnd, true);
+    if (end > timestamp(start)) throw new Error('前の作業の終了時刻は新しい開始時刻以前にしてください');
+    return end;
+  }
   // プロジェクトのタイムゾーン Asia/Tokyo と同じ日付境界を全環境で使う。
   function calendarDate(value) {
     return new Date(timestamp(value) + 9 * 60 * 60000).toISOString().slice(0, 10);
@@ -55,7 +62,7 @@ function createDateRules_() {
     return event.start < range.end && (end > range.start || (event.active && event.start >= range.start));
   }
   return { timestamp: timestamp, roundDown: roundDown, roundUp: roundUp,
-    validateRange: validateRange, editRange: editRange, closeEnd: closeEnd,
+    validateRange: validateRange, editRange: editRange, closeEnd: closeEnd, handoverEnd: handoverEnd,
     calendarDate: calendarDate, dayRange: dayRange, shiftDay: shiftDay, overlapsDay: overlapsDay };
 }
 

@@ -141,11 +141,12 @@ function closeCurrentEvent_(endTime, validateEnd) {
 }
 
 // 開始時刻は現在時刻を5分単位で切り捨てる。前のタスクも同じ時刻で自動終了する。
-function startActivity(title, location, description, expectedId) {
-  return withUserLock_(function() { return startActivity_(title, location, description, expectedId); });
+// previousEndMillis を指定した場合は、前のタスクをその時刻で終了する(終了し忘れの補正)。
+function startActivity(title, location, description, expectedId, previousEndMillis) {
+  return withUserLock_(function() { return startActivity_(title, location, description, expectedId, previousEndMillis); });
 }
 
-function startActivity_(title, location, description, expectedId) {
+function startActivity_(title, location, description, expectedId, previousEndMillis) {
   title = (title || '').trim();
   location = (location || '').trim();
   description = (description || '').trim();
@@ -157,6 +158,8 @@ function startActivity_(title, location, description, expectedId) {
   var previousStart = previous ? previous.getStartTime() : null;
   var previousEnd = previous ? previous.getEndTime() : null;
   var start = new Date(DateRules.roundDown(Date.now(), 5));
+  // 記録を変更する前に検証し、不正な指定では何も作成しない。
+  var handoverEnd = previous ? new Date(DateRules.handoverEnd(previousStart.getTime(), start.getTime(), previousEndMillis)) : null;
 
   var tentativeEnd = new Date(start.getTime() + TENTATIVE_MINUTES * 60 * 1000);
   var options = {};
@@ -166,7 +169,7 @@ function startActivity_(title, location, description, expectedId) {
   var event = calendar.createEvent(title, start, tentativeEnd, options);
   var props = PropertiesService.getUserProperties();
   try {
-    if (previous) previous.setTime(previousStart, new Date(DateRules.closeEnd(previousStart.getTime(), start.getTime(), false)));
+    if (previous) previous.setTime(previousStart, handoverEnd);
     props.setProperty(CURRENT_EVENT_ID_KEY, event.getId());
   } catch (error) {
     var recoveryFailed = false;
